@@ -8,6 +8,7 @@
     "exactOptionalPropertyTypes": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
+    "types": ["bun"],
     "skipLibCheck": true,
     "declaration": true,
     "declarationMap": true,

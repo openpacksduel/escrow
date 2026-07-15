@@ -1,6 +1,9 @@
 [programs.localnet]
-openpacksduel_escrow = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+openpacksduel_escrow = "Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS"
+
+[programs.devnet]
+openpacksduel_escrow = "Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"

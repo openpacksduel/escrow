@@ -99,6 +99,11 @@ jobs:
           test "$(grep -Fc "openpacksduel_escrow = \"${PROGRAM_ID}\"" Anchor.toml)" = 2
           anchor build
 
+      - name: Run transaction-level program tests
+        env:
+          SBF_OUT_DIR: ${{ github.workspace }}/target/deploy
+        run: cargo +"$RUST_VERSION" test --test terminal_recovery -- --ignored --test-threads=1
+
       - name: Package checksummed artifact
         env:
           SOURCE_SHA: ${{ github.sha }}

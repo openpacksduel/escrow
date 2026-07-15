@@ -15,13 +15,16 @@ matchmaking service, and pack-provider adapter live separately in
 ## Current contract
 
 - A creator opens either a direct challenge or an open match.
-- Both players deposit the same disclosed platform-fee amount in a legacy SPL
-  token into a PDA vault. Pack purchases are external and never enter this vault.
+- Both players deposit the same disclosed platform-fee amount in legacy wrapped
+  SOL into a PDA vault. The canonical legacy WSOL mint is enforced on-chain;
+  pack purchases are external and never enter this vault.
 - An open match binds its opponent when the first non-creator deposits.
 - A creator can cancel only before an opponent has joined.
 - After the deadline, anyone can trigger a refund to either player's owned token
   account, so neither player depends on an operator.
 - Each card is deposited into an isolated PDA-controlled legacy SPL token vault.
+  It must have zero decimals, supply one, and permanently revoked mint and freeze
+  authorities before custody accepts it.
 - The configured provider signs one immutable result commitment binding the duel,
   participants, both card mints, both integer values, and the precommitted
   valuation-policy hash.
@@ -31,6 +34,14 @@ matchmaking service, and pack-provider adapter live separately in
   original card and fee deposit without charging the platform fee.
 - Before a provider result is committed, expiry recovery is permissionless and
   returns every payment/card deposit to its bound participant.
+- Once tracked custody has left a vault, anyone can close it. The payment vault
+  first synchronizes raw SOL, then all untracked excess sweeps to the
+  precommitted fee recipient. Any NFT sent back to a terminal card vault returns
+  to its persisted beneficiary: the original role player after refund/tie, or
+  the winner after a non-tie settlement. Rent returns to the creator for the
+  payment vault and to the signer that paid to create each card vault. Duel and
+  result receipts deliberately remain open so a closed vault
+  cannot erase replay protection or settlement history.
 
 The devnet program address is
 `Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS`. The planned deployment authority
@@ -72,6 +83,9 @@ ID and devnet WSOL payment mint, returns unsigned instruction plans, and rejects
 unsupported card standards. Its IDL provenance is tied to source SHA
 `4aa3bb7560443c0565ded2d6edee67c6a544dd5f` and workflow run
 [`29446296348`](https://github.com/openpacksduel/escrow/actions/runs/29446296348).
+That checked client remains pinned to the last checksummed release until a new
+program artifact and IDL are produced; newly added source instructions must not
+be hand-encoded before that release update.
 
 ## Design documents
 

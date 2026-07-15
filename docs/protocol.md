@@ -42,6 +42,8 @@ Creates a duel PDA and payment-vault PDA. It commits:
 
 The nonce allows a wallet to create multiple duels without mutable global state.
 The expiry must be between one minute and seven days from initialization.
+Initialization accepts only the canonical legacy wrapped-SOL mint
+`So11111111111111111111111111111111111111112` used by the devnet client.
 
 ### `fund_duel`
 
@@ -54,8 +56,10 @@ only after both deposits succeed.
 After both payments are funded, a participant or the committed provider signer
 may deposit one card for a player role into that role's isolated PDA vault. The
 instruction accepts only `LegacySplNft` and verifies a zero-decimal mint with a
-supply of exactly one. The serialized asset-kind enum explicitly rejects pNFT,
-cNFT, and Token-2022 routes.
+supply of exactly one. Both mint and freeze authorities must be permanently
+revoked, preventing later supply mutation or a retained authority from freezing
+the custody vault. The serialized asset-kind enum explicitly rejects pNFT, cNFT,
+and Token-2022 routes.
 
 This is a custody primitive, not proof that Collector Crypt supports a PDA as
 `altPlayerAddress`. The provider integration must still prove delivery and
@@ -103,6 +107,32 @@ card deposit to a token account owned by its bound participant. Refund execution
 is permissionless; refund ownership is not. The duel reaches `Refunded` only
 after every tracked deposit leaves custody. A committed result disables refunds
 because its permissionless settlement path is already final.
+
+The refund guard checks both state and the absence of any result-commitment key.
+This defense-in-depth rule means a future migration cannot accidentally reopen a
+refund route merely by regressing a duel status after a valid provider result.
+
+### `close_payment_vault` and `close_card_vault`
+
+After the corresponding tracked deposits have left custody, any signer can
+close the token vault. Closure is not privileged, but asset and rent ownership
+are fixed. Any untracked payment balance first transfers to a token account
+owned by the precommitted fee recipient; the caller cannot redirect it. The
+payment vault is synchronized first, so raw SOL sent directly to its address is
+also treated as WSOL excess rather than being disguised as rent. Each card vault
+persists a terminal beneficiary. It starts as that role's player for expiry
+refunds and ties; non-tie settlement atomically replaces both beneficiaries with
+the winner. Any card sent back after tracked custody clears can therefore return
+only to the wallet that legally received it at terminal settlement. Payment-vault
+rent then returns to the creator that initialized the duel, and card-vault rent
+returns to the exact depositor that funded that vault's creation. The close
+instruction rejects active states, tracked deposits, substituted vaults,
+substituted mints, substituted recovery destinations, and substituted rent
+recipients.
+
+The duel and result accounts are intentionally persistent receipts. Closing and
+recreating either PDA would weaken nonce/request replay guarantees and erase the
+on-chain audit trail, so rent recovery applies only to custody accounts.
 
 ## Provider authorization boundary
 

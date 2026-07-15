@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
+use anchor_spl::token::{
+    self, CloseAccount, Mint, SyncNative, Token, TokenAccount, TransferChecked,
+};
 
 declare_id!("Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS");
 
@@ -19,10 +21,16 @@ pub mod openpacksduel_escrow {
 
     pub fn initialize_duel(ctx: Context<InitializeDuel>, args: InitializeDuelArgs) -> Result<()> {
         let clock = Clock::get()?;
-        validate_initialization(&args, ctx.accounts.creator.key(), clock.unix_timestamp)?;
+        validate_initialization(
+            &args,
+            ctx.accounts.creator.key(),
+            ctx.accounts.duel.key(),
+            clock.unix_timestamp,
+        )?;
+        validate_payment_mint(ctx.accounts.payment_mint.key())?;
 
         let duel = &mut ctx.accounts.duel;
-        duel.version = 2;
+        duel.version = 4;
         duel.bump = ctx.bumps.duel;
         duel.payment_vault_bump = ctx.bumps.payment_vault;
         duel.status = DuelStatus::Waiting;
@@ -44,6 +52,10 @@ pub mod openpacksduel_escrow {
         duel.opponent_card_mint = Pubkey::default();
         duel.creator_card_vault = Pubkey::default();
         duel.opponent_card_vault = Pubkey::default();
+        duel.creator_card_rent_recipient = Pubkey::default();
+        duel.opponent_card_rent_recipient = Pubkey::default();
+        duel.creator_card_terminal_beneficiary = Pubkey::default();
+        duel.opponent_card_terminal_beneficiary = Pubkey::default();
         duel.result_commitment = Pubkey::default();
         duel.valuation_policy_hash = args.valuation_policy_hash;
 
@@ -118,10 +130,18 @@ pub mod openpacksduel_escrow {
             args.asset_kind == AssetKind::LegacySplNft,
             EscrowError::UnsupportedAssetStandard
         );
-        require!(
-            ctx.accounts.card_mint.decimals == 0 && ctx.accounts.card_mint.supply == 1,
-            EscrowError::InvalidCardMint
-        );
+        validate_card_mint_policy(
+            ctx.accounts.card_mint.decimals,
+            ctx.accounts.card_mint.supply,
+            matches!(
+                ctx.accounts.card_mint.mint_authority,
+                anchor_lang::solana_program::program_option::COption::None
+            ),
+            matches!(
+                ctx.accounts.card_mint.freeze_authority,
+                anchor_lang::solana_program::program_option::COption::None
+            ),
+        )?;
         require!(
             ctx.accounts.depositor.key() == ctx.accounts.duel.player_for_role(args.role)
                 || ctx.accounts.depositor.key() == ctx.accounts.duel.provider_signer,
@@ -146,6 +166,7 @@ pub mod openpacksduel_escrow {
             args.role,
             ctx.accounts.card_mint.key(),
             ctx.accounts.card_vault.key(),
+            ctx.accounts.depositor.key(),
         );
         if duel.creator_card_deposited && duel.opponent_card_deposited {
             duel.status = DuelStatus::AwaitingResult;
@@ -211,14 +232,7 @@ pub mod openpacksduel_escrow {
             args.provider_request_id != [0; 32],
             EscrowError::InvalidProviderRequest
         );
-        require!(
-            args.opened_at >= duel.created_at
-                && args.opened_at
-                    <= clock
-                        .unix_timestamp
-                        .saturating_add(MAX_PROVIDER_CLOCK_SKEW_SECONDS),
-            EscrowError::InvalidResultTimestamp
-        );
+        validate_result_timestamp(duel, args.opened_at, clock.unix_timestamp)?;
 
         let outcome = determine_outcome(args.creator_value, args.opponent_value);
         let result = &mut ctx.accounts.result_commitment;
@@ -268,11 +282,12 @@ pub mod openpacksduel_escrow {
     pub fn settle_duel(ctx: Context<SettleDuel>) -> Result<()> {
         let duel = &ctx.accounts.duel;
         let result = &ctx.accounts.result_commitment;
+        require!(!result.settled, EscrowError::ResultAlreadySettled);
         require!(
             duel.status == DuelStatus::ReadyToSettle,
             EscrowError::InvalidStatus
         );
-        require!(!result.settled, EscrowError::ResultAlreadySettled);
+        require!(duel.all_custody_present(), EscrowError::IncompleteCustody);
         validate_settlement_accounts(&ctx)?;
 
         match result.outcome {
@@ -362,6 +377,7 @@ pub mod openpacksduel_escrow {
             total_fee_deposits(duel.fee_amount)?
         };
         let duel = &mut ctx.accounts.duel;
+        duel.set_terminal_card_beneficiaries(ctx.accounts.result_commitment.outcome);
         duel.creator_deposited = false;
         duel.opponent_deposited = false;
         duel.creator_card_deposited = false;
@@ -501,6 +517,136 @@ pub mod openpacksduel_escrow {
 
         Ok(())
     }
+
+    pub fn close_payment_vault(ctx: Context<ClosePaymentVault>) -> Result<()> {
+        ctx.accounts.duel.require_payment_vault_closable()?;
+        require_keys_eq!(
+            ctx.accounts.excess_destination.owner,
+            ctx.accounts.duel.fee_recipient,
+            EscrowError::InvalidFeeDestination
+        );
+        require_keys_neq!(
+            ctx.accounts.excess_destination.key(),
+            ctx.accounts.payment_vault.key(),
+            EscrowError::InvalidFeeDestination
+        );
+
+        sync_native_vault(&ctx.accounts.payment_vault, &ctx.accounts.token_program)?;
+        ctx.accounts.payment_vault.reload()?;
+
+        let excess_amount = ctx.accounts.payment_vault.amount;
+        if excess_amount > 0 {
+            transfer_from_duel_vault(
+                &ctx.accounts.duel,
+                &ctx.accounts.payment_vault,
+                &ctx.accounts.payment_mint,
+                &ctx.accounts.excess_destination,
+                &ctx.accounts.token_program,
+                excess_amount,
+            )?;
+            ctx.accounts.payment_vault.reload()?;
+
+            emit!(PaymentExcessSwept {
+                duel: ctx.accounts.duel.key(),
+                payment_mint: ctx.accounts.payment_mint.key(),
+                destination: ctx.accounts.excess_destination.key(),
+                amount: excess_amount,
+            });
+        }
+        require!(
+            ctx.accounts.payment_vault.amount == 0,
+            EscrowError::VaultNotEmpty
+        );
+
+        close_token_vault(
+            &ctx.accounts.duel,
+            &ctx.accounts.payment_vault,
+            &ctx.accounts.rent_recipient,
+            &ctx.accounts.token_program,
+        )?;
+
+        emit!(CustodyVaultClosed {
+            duel: ctx.accounts.duel.key(),
+            vault: ctx.accounts.payment_vault.key(),
+            vault_kind: CustodyVaultKind::Payment,
+            rent_recipient: ctx.accounts.rent_recipient.key(),
+        });
+
+        Ok(())
+    }
+
+    pub fn close_card_vault(ctx: Context<CloseCardVault>, role: PlayerRole) -> Result<()> {
+        ctx.accounts.duel.require_card_vault_closable(role)?;
+        require_keys_eq!(
+            ctx.accounts.card_vault.key(),
+            ctx.accounts.duel.card_vault(role),
+            EscrowError::InvalidCardVault
+        );
+        require_keys_eq!(
+            ctx.accounts.card_mint.key(),
+            ctx.accounts.duel.card_mint(role),
+            EscrowError::ResultAssetMismatch
+        );
+        require_keys_eq!(
+            ctx.accounts.rent_recipient.key(),
+            ctx.accounts.duel.card_rent_recipient(role),
+            EscrowError::InvalidRentRecipient
+        );
+        require_keys_eq!(
+            ctx.accounts.recovery_destination.owner,
+            ctx.accounts.duel.card_terminal_beneficiary(role),
+            EscrowError::InvalidDestinationOwner
+        );
+        require_keys_neq!(
+            ctx.accounts.recovery_destination.key(),
+            ctx.accounts.card_vault.key(),
+            EscrowError::InvalidDestinationOwner
+        );
+
+        let excess_amount = ctx.accounts.card_vault.amount;
+        if excess_amount > 0 {
+            transfer_from_duel_vault(
+                &ctx.accounts.duel,
+                &ctx.accounts.card_vault,
+                &ctx.accounts.card_mint,
+                &ctx.accounts.recovery_destination,
+                &ctx.accounts.token_program,
+                excess_amount,
+            )?;
+            ctx.accounts.card_vault.reload()?;
+
+            emit!(CardExcessSwept {
+                duel: ctx.accounts.duel.key(),
+                role,
+                card_mint: ctx.accounts.card_mint.key(),
+                destination: ctx.accounts.recovery_destination.key(),
+                amount: excess_amount,
+            });
+        }
+        require!(
+            ctx.accounts.card_vault.amount == 0,
+            EscrowError::VaultNotEmpty
+        );
+
+        close_token_vault(
+            &ctx.accounts.duel,
+            &ctx.accounts.card_vault,
+            &ctx.accounts.rent_recipient,
+            &ctx.accounts.token_program,
+        )?;
+
+        emit!(CustodyVaultClosed {
+            duel: ctx.accounts.duel.key(),
+            vault: ctx.accounts.card_vault.key(),
+            vault_kind: match role {
+                PlayerRole::Creator => CustodyVaultKind::CreatorCard,
+                PlayerRole::Opponent => CustodyVaultKind::OpponentCard,
+            },
+            rent_recipient: ctx.accounts.rent_recipient.key(),
+        });
+
+        Ok(())
+    }
 }
 
 fn transfer_checked<'info>(
@@ -524,6 +670,18 @@ fn transfer_checked<'info>(
         amount,
         mint.decimals,
     )
+}
+
+fn sync_native_vault<'info>(
+    vault: &Account<'info, TokenAccount>,
+    token_program: &Program<'info, Token>,
+) -> Result<()> {
+    token::sync_native(CpiContext::new(
+        token_program.key(),
+        SyncNative {
+            account: vault.to_account_info(),
+        },
+    ))
 }
 
 fn transfer_from_duel_vault<'info>(
@@ -562,7 +720,30 @@ fn transfer_card_from_vault<'info>(
     destination: &Account<'info, TokenAccount>,
     token_program: &Program<'info, Token>,
 ) -> Result<()> {
-    transfer_from_duel_vault(duel, vault, mint, destination, token_program, 1)
+    require!(vault.amount > 0, EscrowError::CardDepositNotFound);
+    transfer_from_duel_vault(duel, vault, mint, destination, token_program, vault.amount)
+}
+
+fn close_token_vault<'info>(
+    duel: &Account<'info, Duel>,
+    vault: &Account<'info, TokenAccount>,
+    rent_recipient: &UncheckedAccount<'info>,
+    token_program: &Program<'info, Token>,
+) -> Result<()> {
+    let creator = duel.creator;
+    let nonce = duel.nonce.to_le_bytes();
+    let bump = [duel.bump];
+    let signer_seeds = [DUEL_SEED, creator.as_ref(), nonce.as_ref(), bump.as_ref()];
+
+    token::close_account(CpiContext::new_with_signer(
+        token_program.key(),
+        CloseAccount {
+            account: vault.to_account_info(),
+            destination: rent_recipient.to_account_info(),
+            authority: duel.to_account_info(),
+        },
+        &[&signer_seeds],
+    ))
 }
 
 fn transfer_platform_fees<'info>(
@@ -599,6 +780,39 @@ fn determine_outcome(creator_value: u64, opponent_value: u64) -> DuelOutcome {
     }
 }
 
+fn validate_payment_mint(payment_mint: Pubkey) -> Result<()> {
+    require_keys_eq!(
+        payment_mint,
+        token::spl_token::native_mint::ID,
+        EscrowError::UnsupportedPaymentMint
+    );
+    Ok(())
+}
+
+fn validate_card_mint_policy(
+    decimals: u8,
+    supply: u64,
+    mint_authority_revoked: bool,
+    freeze_authority_revoked: bool,
+) -> Result<()> {
+    require!(decimals == 0 && supply == 1, EscrowError::InvalidCardMint);
+    require!(
+        mint_authority_revoked && freeze_authority_revoked,
+        EscrowError::UnsafeCardMintAuthority
+    );
+    Ok(())
+}
+
+fn validate_result_timestamp(duel: &Duel, opened_at: i64, now: i64) -> Result<()> {
+    require!(
+        opened_at >= duel.created_at
+            && opened_at <= duel.expires_at
+            && opened_at <= now.saturating_add(MAX_PROVIDER_CLOCK_SKEW_SECONDS),
+        EscrowError::InvalidResultTimestamp
+    );
+    Ok(())
+}
+
 fn require_before_expiry(duel: &Account<Duel>) -> Result<()> {
     require!(
         Clock::get()?.unix_timestamp < duel.expires_at,
@@ -608,6 +822,10 @@ fn require_before_expiry(duel: &Account<Duel>) -> Result<()> {
 }
 
 fn require_refundable(duel: &Account<Duel>) -> Result<()> {
+    validate_refund_eligibility(duel, Clock::get()?.unix_timestamp)
+}
+
+fn validate_refund_eligibility(duel: &Duel, now: i64) -> Result<()> {
     require!(
         matches!(
             duel.status,
@@ -619,13 +837,19 @@ fn require_refundable(duel: &Account<Duel>) -> Result<()> {
         EscrowError::InvalidStatus
     );
     require!(
-        Clock::get()?.unix_timestamp >= duel.expires_at,
-        EscrowError::DuelNotExpired
+        duel.result_commitment == Pubkey::default(),
+        EscrowError::ResultAlreadyCommitted
     );
+    require!(now >= duel.expires_at, EscrowError::DuelNotExpired);
     Ok(())
 }
 
-fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64) -> Result<()> {
+fn validate_initialization(
+    args: &InitializeDuelArgs,
+    creator: Pubkey,
+    duel: Pubkey,
+    now: i64,
+) -> Result<()> {
     require!(args.fee_amount > 0, EscrowError::InvalidFeeAmount);
     require!(
         args.provider_signer != Pubkey::default(),
@@ -635,6 +859,7 @@ fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64)
         args.fee_recipient != Pubkey::default(),
         EscrowError::InvalidFeeRecipient
     );
+    require_keys_neq!(args.fee_recipient, duel, EscrowError::InvalidFeeRecipient);
     require!(
         args.valuation_policy_hash != [0; 32],
         EscrowError::InvalidValuationPolicy
@@ -748,7 +973,7 @@ pub struct InitializeDuel<'info> {
         seeds = [DUEL_SEED, creator.key().as_ref(), args.nonce.to_le_bytes().as_ref()],
         bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         init,
         payer = creator,
@@ -774,7 +999,7 @@ pub struct FundDuel<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, token::mint = payment_mint, token::authority = player)]
     pub player_source: Account<'info, TokenAccount>,
     #[account(
@@ -799,7 +1024,7 @@ pub struct DepositCardAsset<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, token::mint = card_mint, token::authority = depositor)]
     pub depositor_source: Account<'info, TokenAccount>,
     #[account(
@@ -826,7 +1051,7 @@ pub struct SubmitResult<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         init,
         payer = provider_signer,
@@ -848,9 +1073,9 @@ pub struct SettleDuel<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, has_one = duel)]
-    pub result_commitment: Account<'info, ResultCommitment>,
+    pub result_commitment: Box<Account<'info, ResultCommitment>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -858,14 +1083,14 @@ pub struct SettleDuel<'info> {
         token::mint = payment_mint,
         token::authority = duel,
     )]
-    pub payment_vault: Account<'info, TokenAccount>,
-    pub payment_mint: Account<'info, Mint>,
+    pub payment_vault: Box<Account<'info, TokenAccount>>,
+    pub payment_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = payment_mint)]
-    pub creator_payment_destination: Account<'info, TokenAccount>,
+    pub creator_payment_destination: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = payment_mint)]
-    pub opponent_payment_destination: Account<'info, TokenAccount>,
+    pub opponent_payment_destination: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = payment_mint)]
-    pub fee_destination: Account<'info, TokenAccount>,
+    pub fee_destination: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), CREATOR_CARD_SEED],
@@ -873,10 +1098,10 @@ pub struct SettleDuel<'info> {
         token::mint = creator_card_mint,
         token::authority = duel,
     )]
-    pub creator_card_vault: Account<'info, TokenAccount>,
-    pub creator_card_mint: Account<'info, Mint>,
+    pub creator_card_vault: Box<Account<'info, TokenAccount>>,
+    pub creator_card_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = creator_card_mint)]
-    pub creator_card_destination: Account<'info, TokenAccount>,
+    pub creator_card_destination: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), OPPONENT_CARD_SEED],
@@ -884,10 +1109,10 @@ pub struct SettleDuel<'info> {
         token::mint = opponent_card_mint,
         token::authority = duel,
     )]
-    pub opponent_card_vault: Account<'info, TokenAccount>,
-    pub opponent_card_mint: Account<'info, Mint>,
+    pub opponent_card_vault: Box<Account<'info, TokenAccount>>,
+    pub opponent_card_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = opponent_card_mint)]
-    pub opponent_card_destination: Account<'info, TokenAccount>,
+    pub opponent_card_destination: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -903,7 +1128,7 @@ pub struct CancelUnmatched<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -928,7 +1153,7 @@ pub struct RefundExpiredPayment<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -952,7 +1177,7 @@ pub struct RefundExpiredCard<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), role.seed()],
@@ -964,6 +1189,59 @@ pub struct RefundExpiredCard<'info> {
     pub card_mint: Account<'info, Mint>,
     #[account(mut, token::mint = card_mint)]
     pub destination: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct ClosePaymentVault<'info> {
+    pub caller: Signer<'info>,
+    #[account(
+        seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
+        bump = duel.bump,
+        has_one = payment_mint,
+        has_one = payment_vault,
+    )]
+    pub duel: Box<Account<'info, Duel>>,
+    #[account(
+        mut,
+        seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
+        bump = duel.payment_vault_bump,
+        token::mint = payment_mint,
+        token::authority = duel,
+    )]
+    pub payment_vault: Account<'info, TokenAccount>,
+    pub payment_mint: Account<'info, Mint>,
+    /// CHECK: The address constraint binds rent recovery to the duel creator.
+    #[account(mut, address = duel.creator @ EscrowError::InvalidRentRecipient)]
+    pub rent_recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = payment_mint)]
+    pub excess_destination: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+#[instruction(role: PlayerRole)]
+pub struct CloseCardVault<'info> {
+    pub caller: Signer<'info>,
+    #[account(
+        seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
+        bump = duel.bump,
+    )]
+    pub duel: Box<Account<'info, Duel>>,
+    #[account(
+        mut,
+        seeds = [CARD_VAULT_SEED, duel.key().as_ref(), role.seed()],
+        bump,
+        token::mint = card_mint,
+        token::authority = duel,
+    )]
+    pub card_vault: Account<'info, TokenAccount>,
+    pub card_mint: Account<'info, Mint>,
+    /// CHECK: The instruction verifies this key against the recorded vault payer.
+    #[account(mut)]
+    pub rent_recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = card_mint)]
+    pub recovery_destination: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -1025,6 +1303,10 @@ pub struct Duel {
     pub opponent_card_mint: Pubkey,
     pub creator_card_vault: Pubkey,
     pub opponent_card_vault: Pubkey,
+    pub creator_card_rent_recipient: Pubkey,
+    pub opponent_card_rent_recipient: Pubkey,
+    pub creator_card_terminal_beneficiary: Pubkey,
+    pub opponent_card_terminal_beneficiary: Pubkey,
     pub result_commitment: Pubkey,
     pub valuation_policy_hash: [u8; 32],
 }
@@ -1099,17 +1381,51 @@ impl Duel {
         }
     }
 
-    fn record_card_deposit(&mut self, role: PlayerRole, mint: Pubkey, vault: Pubkey) {
+    fn record_card_deposit(
+        &mut self,
+        role: PlayerRole,
+        mint: Pubkey,
+        vault: Pubkey,
+        rent_recipient: Pubkey,
+    ) {
         match role {
             PlayerRole::Creator => {
                 self.creator_card_deposited = true;
                 self.creator_card_mint = mint;
                 self.creator_card_vault = vault;
+                self.creator_card_rent_recipient = rent_recipient;
+                self.creator_card_terminal_beneficiary = self.creator;
             }
             PlayerRole::Opponent => {
                 self.opponent_card_deposited = true;
                 self.opponent_card_mint = mint;
                 self.opponent_card_vault = vault;
+                self.opponent_card_rent_recipient = rent_recipient;
+                self.opponent_card_terminal_beneficiary = self.opponent;
+            }
+        }
+    }
+
+    fn card_terminal_beneficiary(&self, role: PlayerRole) -> Pubkey {
+        match role {
+            PlayerRole::Creator => self.creator_card_terminal_beneficiary,
+            PlayerRole::Opponent => self.opponent_card_terminal_beneficiary,
+        }
+    }
+
+    fn set_terminal_card_beneficiaries(&mut self, outcome: DuelOutcome) {
+        match outcome {
+            DuelOutcome::CreatorWins => {
+                self.creator_card_terminal_beneficiary = self.creator;
+                self.opponent_card_terminal_beneficiary = self.creator;
+            }
+            DuelOutcome::OpponentWins => {
+                self.creator_card_terminal_beneficiary = self.opponent;
+                self.opponent_card_terminal_beneficiary = self.opponent;
+            }
+            DuelOutcome::Tie => {
+                self.creator_card_terminal_beneficiary = self.creator;
+                self.opponent_card_terminal_beneficiary = self.opponent;
             }
         }
     }
@@ -1119,6 +1435,51 @@ impl Duel {
             PlayerRole::Creator => self.creator_card_deposited = false,
             PlayerRole::Opponent => self.opponent_card_deposited = false,
         }
+    }
+
+    fn card_rent_recipient(&self, role: PlayerRole) -> Pubkey {
+        match role {
+            PlayerRole::Creator => self.creator_card_rent_recipient,
+            PlayerRole::Opponent => self.opponent_card_rent_recipient,
+        }
+    }
+
+    fn all_custody_present(&self) -> bool {
+        self.creator_deposited
+            && self.opponent_deposited
+            && self.creator_card_deposited
+            && self.opponent_card_deposited
+    }
+
+    fn is_recovery_or_terminal(&self) -> bool {
+        matches!(
+            self.status,
+            DuelStatus::Refunding
+                | DuelStatus::Settled
+                | DuelStatus::Cancelled
+                | DuelStatus::Refunded
+        )
+    }
+
+    fn require_payment_vault_closable(&self) -> Result<()> {
+        require!(self.is_recovery_or_terminal(), EscrowError::InvalidStatus);
+        require!(
+            !self.creator_deposited && !self.opponent_deposited,
+            EscrowError::CustodyStillTracked
+        );
+        Ok(())
+    }
+
+    fn require_card_vault_closable(&self, role: PlayerRole) -> Result<()> {
+        require!(self.is_recovery_or_terminal(), EscrowError::InvalidStatus);
+        require!(!self.card_deposited(role), EscrowError::CustodyStillTracked);
+        require!(
+            self.card_vault(role) != Pubkey::default()
+                && self.card_rent_recipient(role) != Pubkey::default()
+                && self.card_terminal_beneficiary(role) != Pubkey::default(),
+            EscrowError::CardDepositNotFound
+        );
+        Ok(())
     }
 
     fn update_refund_status(&mut self) {
@@ -1197,6 +1558,13 @@ pub enum DuelOutcome {
     CreatorWins,
     OpponentWins,
     Tie,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CustodyVaultKind {
+    Payment,
+    CreatorCard,
+    OpponentCard,
 }
 
 impl DuelOutcome {
@@ -1294,6 +1662,31 @@ pub struct CardAssetRefunded {
     pub status: DuelStatus,
 }
 
+#[event]
+pub struct CustodyVaultClosed {
+    pub duel: Pubkey,
+    pub vault: Pubkey,
+    pub vault_kind: CustodyVaultKind,
+    pub rent_recipient: Pubkey,
+}
+
+#[event]
+pub struct PaymentExcessSwept {
+    pub duel: Pubkey,
+    pub payment_mint: Pubkey,
+    pub destination: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct CardExcessSwept {
+    pub duel: Pubkey,
+    pub role: PlayerRole,
+    pub card_mint: Pubkey,
+    pub destination: Pubkey,
+    pub amount: u64,
+}
+
 #[error_code]
 pub enum EscrowError {
     #[msg("Per-player fee deposit must be greater than zero")]
@@ -1332,6 +1725,8 @@ pub enum EscrowError {
     UnsupportedAssetStandard,
     #[msg("Card mint must be a zero-decimal, single-supply legacy SPL mint")]
     InvalidCardMint,
+    #[msg("Card mint and freeze authorities must be permanently revoked")]
+    UnsafeCardMintAuthority,
     #[msg("Card depositor must be the bound player or provider signer")]
     InvalidCardDepositor,
     #[msg("A card has already been deposited for this role")]
@@ -1352,6 +1747,18 @@ pub enum EscrowError {
     InvalidResultTimestamp,
     #[msg("Result has already been settled")]
     ResultAlreadySettled,
+    #[msg("A provider result has already been committed and must be settled")]
+    ResultAlreadyCommitted,
+    #[msg("The duel does not have every payment and card deposit required for settlement")]
+    IncompleteCustody,
+    #[msg("The custody vault still has a tracked deposit")]
+    CustodyStillTracked,
+    #[msg("The custody vault still contains tokens")]
+    VaultNotEmpty,
+    #[msg("Vault rent must return to the account that funded its creation")]
+    InvalidRentRecipient,
+    #[msg("Only the canonical legacy wrapped-SOL mint is supported for devnet fees")]
+    UnsupportedPaymentMint,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
 }
@@ -1362,7 +1769,7 @@ mod tests {
 
     fn waiting_duel() -> Duel {
         Duel {
-            version: 2,
+            version: 4,
             bump: 1,
             payment_vault_bump: 2,
             status: DuelStatus::Waiting,
@@ -1384,6 +1791,10 @@ mod tests {
             opponent_card_mint: Pubkey::default(),
             creator_card_vault: Pubkey::default(),
             opponent_card_vault: Pubkey::default(),
+            creator_card_rent_recipient: Pubkey::default(),
+            opponent_card_rent_recipient: Pubkey::default(),
+            creator_card_terminal_beneficiary: Pubkey::default(),
+            opponent_card_terminal_beneficiary: Pubkey::default(),
             result_commitment: Pubkey::default(),
             valuation_policy_hash: [9; 32],
         }
@@ -1413,9 +1824,34 @@ mod tests {
     }
 
     #[test]
+    fn provider_result_timestamp_is_bounded_by_creation_expiry_and_clock_skew() {
+        let duel = waiting_duel();
+        assert!(validate_result_timestamp(&duel, duel.created_at, 150).is_ok());
+        assert!(validate_result_timestamp(&duel, duel.expires_at, duel.expires_at).is_ok());
+        assert!(validate_result_timestamp(&duel, duel.created_at - 1, 150).is_err());
+        assert!(validate_result_timestamp(&duel, duel.expires_at + 1, 150).is_err());
+        assert!(validate_result_timestamp(&duel, 181, 150).is_err());
+    }
+
+    #[test]
     fn settled_platform_fee_is_exactly_both_disclosed_deposits() {
         assert_eq!(total_fee_deposits(50_000).unwrap(), 100_000);
         assert!(total_fee_deposits(u64::MAX).is_err());
+    }
+
+    #[test]
+    fn devnet_payment_mint_is_exactly_legacy_wrapped_sol() {
+        assert!(validate_payment_mint(token::spl_token::native_mint::ID).is_ok());
+        assert!(validate_payment_mint(Pubkey::new_unique()).is_err());
+    }
+
+    #[test]
+    fn legacy_card_mint_requires_fixed_supply_and_revoked_authorities() {
+        assert!(validate_card_mint_policy(0, 1, true, true).is_ok());
+        assert!(validate_card_mint_policy(1, 1, true, true).is_err());
+        assert!(validate_card_mint_policy(0, 2, true, true).is_err());
+        assert!(validate_card_mint_policy(0, 1, false, true).is_err());
+        assert!(validate_card_mint_policy(0, 1, true, false).is_err());
     }
 
     #[test]
@@ -1430,6 +1866,137 @@ mod tests {
         duel.creator_card_deposited = false;
         duel.update_refund_status();
         assert_eq!(duel.status, DuelStatus::Refunded);
+    }
+
+    #[test]
+    fn every_partial_refund_permutation_remains_recoverable() {
+        for deposit_mask in 1_u8..16 {
+            let mut duel = waiting_duel();
+            duel.creator_deposited = deposit_mask & 1 != 0;
+            duel.opponent_deposited = deposit_mask & 2 != 0;
+            duel.creator_card_deposited = deposit_mask & 4 != 0;
+            duel.opponent_card_deposited = deposit_mask & 8 != 0;
+            duel.update_refund_status();
+            assert_eq!(duel.status, DuelStatus::Refunding);
+        }
+
+        let mut duel = waiting_duel();
+        duel.update_refund_status();
+        assert_eq!(duel.status, DuelStatus::Refunded);
+    }
+
+    #[test]
+    fn refunds_start_at_expiry_but_never_after_a_result_commitment() {
+        let mut duel = waiting_duel();
+        assert!(validate_refund_eligibility(&duel, duel.expires_at - 1).is_err());
+        assert!(validate_refund_eligibility(&duel, duel.expires_at).is_ok());
+
+        duel.result_commitment = Pubkey::new_from_array([8; 32]);
+        assert!(validate_refund_eligibility(&duel, duel.expires_at).is_err());
+
+        duel.result_commitment = Pubkey::default();
+        for status in [
+            DuelStatus::ReadyToSettle,
+            DuelStatus::Settled,
+            DuelStatus::Cancelled,
+            DuelStatus::Refunded,
+        ] {
+            duel.status = status;
+            assert!(validate_refund_eligibility(&duel, duel.expires_at).is_err());
+        }
+    }
+
+    #[test]
+    fn settlement_requires_every_tracked_payment_and_card() {
+        let mut duel = waiting_duel();
+        assert!(!duel.all_custody_present());
+
+        duel.creator_deposited = true;
+        duel.opponent_deposited = true;
+        duel.creator_card_deposited = true;
+        assert!(!duel.all_custody_present());
+
+        duel.opponent_card_deposited = true;
+        assert!(duel.all_custody_present());
+    }
+
+    #[test]
+    fn vault_rent_recovery_is_available_only_after_tracked_custody_leaves() {
+        let mut duel = waiting_duel();
+        let creator_card_vault = Pubkey::new_from_array([10; 32]);
+        let creator_card_mint = Pubkey::new_from_array([11; 32]);
+        let card_payer = Pubkey::new_from_array([12; 32]);
+        duel.record_card_deposit(
+            PlayerRole::Creator,
+            creator_card_mint,
+            creator_card_vault,
+            card_payer,
+        );
+        duel.status = DuelStatus::Refunding;
+
+        assert!(duel
+            .require_card_vault_closable(PlayerRole::Creator)
+            .is_err());
+        duel.clear_card_deposit(PlayerRole::Creator);
+        assert!(duel
+            .require_card_vault_closable(PlayerRole::Creator)
+            .is_ok());
+        assert_eq!(duel.card_rent_recipient(PlayerRole::Creator), card_payer);
+
+        duel.creator_deposited = true;
+        assert!(duel.require_payment_vault_closable().is_err());
+        duel.creator_deposited = false;
+        assert!(duel.require_payment_vault_closable().is_ok());
+    }
+
+    #[test]
+    fn non_tie_settlement_persists_winner_as_both_card_beneficiaries() {
+        let mut duel = waiting_duel();
+        duel.opponent = Pubkey::new_from_array([6; 32]);
+
+        duel.set_terminal_card_beneficiaries(DuelOutcome::CreatorWins);
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Creator),
+            duel.creator
+        );
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Opponent),
+            duel.creator
+        );
+
+        duel.set_terminal_card_beneficiaries(DuelOutcome::OpponentWins);
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Creator),
+            duel.opponent
+        );
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Opponent),
+            duel.opponent
+        );
+    }
+
+    #[test]
+    fn every_terminal_state_has_a_deterministic_vault_closure_policy() {
+        for status in [
+            DuelStatus::Settled,
+            DuelStatus::Cancelled,
+            DuelStatus::Refunded,
+        ] {
+            let mut duel = waiting_duel();
+            duel.status = status;
+            assert!(duel.require_payment_vault_closable().is_ok());
+        }
+
+        for status in [
+            DuelStatus::Waiting,
+            DuelStatus::Funded,
+            DuelStatus::AwaitingResult,
+            DuelStatus::ReadyToSettle,
+        ] {
+            let mut duel = waiting_duel();
+            duel.status = status;
+            assert!(duel.require_payment_vault_closable().is_err());
+        }
     }
 
     #[test]

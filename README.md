@@ -15,13 +15,16 @@ matchmaking service, and pack-provider adapter live separately in
 ## Current contract
 
 - A creator opens either a direct challenge or an open match.
-- Both players deposit the same disclosed platform-fee amount in a legacy SPL
-  token into a PDA vault. Pack purchases are external and never enter this vault.
+- Both players deposit the same disclosed platform-fee amount in legacy wrapped
+  SOL into a PDA vault. The canonical legacy WSOL mint is enforced on-chain;
+  pack purchases are external and never enter this vault.
 - An open match binds its opponent when the first non-creator deposits.
 - A creator can cancel only before an opponent has joined.
 - After the deadline, anyone can trigger a refund to either player's owned token
   account, so neither player depends on an operator.
 - Each card is deposited into an isolated PDA-controlled legacy SPL token vault.
+  It must have zero decimals, supply one, and permanently revoked mint and freeze
+  authorities before custody accepts it.
 - The configured provider signs one immutable result commitment binding the duel,
   participants, both card mints, both integer values, and the precommitted
   valuation-policy hash.
@@ -31,10 +34,11 @@ matchmaking service, and pack-provider adapter live separately in
   original card and fee deposit without charging the platform fee.
 - Before a provider result is committed, expiry recovery is permissionless and
   returns every payment/card deposit to its bound participant.
-- Once tracked custody has left a vault, anyone can close that empty vault. Its
-  rent returns to the creator for the payment vault and to the signer that paid
-  to create each card vault. Duel and result receipts deliberately remain open
-  so a closed vault cannot erase replay protection or settlement history.
+- Once tracked custody has left a vault, anyone can close it. Untracked payment
+  excess first sweeps to the precommitted fee recipient, then rent returns to the
+  creator for the payment vault and to the signer that paid to create each card
+  vault. Duel and result receipts deliberately remain open so a closed vault
+  cannot erase replay protection or settlement history.
 
 The devnet program address is
 `Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS`. The planned deployment authority

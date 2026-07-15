@@ -44,7 +44,7 @@ decoded transaction and committed duel terms before wallet approval.
 | Operator disappearance | Permissionless deadline refunds to participant-owned accounts |
 | Creator cancels after opponent joins | Cancellation rejects any duel with an opponent deposit |
 | Malicious refund destination | Destination token owner must equal the refunded player |
-| Unsupported token behavior breaks custody | Account owners must be the legacy SPL Token Program; asset kind must be `LegacySplNft`; mint must have zero decimals and supply one. pNFT/cNFT/Token-2022 are rejected or cannot satisfy the account schema |
+| Unsupported token behavior breaks custody | Fee custody accepts only the canonical legacy WSOL mint. Card accounts must use the legacy SPL Token Program; asset kind must be `LegacySplNft`; mint must have zero decimals, supply one, and revoked mint/freeze authorities. pNFT/cNFT/Token-2022 are rejected or cannot satisfy the account schema |
 | Price manipulation | Precommitted policy hash, bounded quote age, multiple-source/fallback rules, integer minor units |
 | NFT substitution | Provider result binds the exact mints already held by the two role-specific PDA vaults. Collection/metadata verification remains a documented devnet limitation |
 | Fee-recipient or amount swap | Recipient and exact per-player fee amount are committed in duel state before funding |
@@ -54,6 +54,7 @@ decoded transaction and committed duel terms before wallet approval.
 | Provider changes outcome | One immutable result account per duel plus a globally unique provider/request receipt; no update instruction or privileged winner override exists |
 | Settlement caller redirects assets | Every payment/card destination owner is checked against the deterministic winner or original owner; fee destination is checked against the committed recipient |
 | Vault closer steals rent or closes active custody | Closure is permissionless only after tracked custody leaves; the payment recipient is the creator and each card recipient is its recorded vault payer |
+| Unsolicited payment dust strands rent | Terminal closure sweeps the entire residual payment balance only to a token account owned by the precommitted fee recipient before closing the vault |
 | Duplicate mutable-account aliasing | Anchor account constraints plus explicit participant and destination checks |
 
 ## Known devnet MVP gaps
@@ -67,9 +68,12 @@ decoded transaction and committed duel terms before wallet approval.
   result is committed, settlement intentionally has no deadline.
 - The provider's `opened_at` timestamp must be within both the accepted clock
   skew and the duel's committed expiry; it cannot attest a post-expiry opening.
-- Payment-mint allowlisting is not yet governed on-chain.
+- Devnet intentionally supports only legacy wrapped SOL for fee custody; adding
+  any other payment mint requires a separately reviewed on-chain allowlist.
 - The devnet program ID is reserved but deployment awaits a funded authority.
-- Unsolicited legacy SPL transfers can leave untracked dust in PDA vaults.
+- Unsolicited same-mint card units are routed with the tracked mint to its
+  deterministic settlement/refund owner; payment dust is swept to the committed
+  fee recipient during terminal closure.
 - Empty custody vaults can be closed permissionlessly, but duel and result PDAs
   intentionally retain rent as the durable replay and audit receipts.
 - The program has not received an independent audit.

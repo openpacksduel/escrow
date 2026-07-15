@@ -24,5 +24,15 @@ no-log-ix-name = []
 anchor-lang = { version = "=1.1.2", features = ["derive"] }
 anchor-spl = { version = "=1.1.2", default-features = false, features = ["token", "token_2022"] }
 
+[dev-dependencies]
+solana-account = "=3.2.0"
+solana-keypair = "=3.0.1"
+solana-program-pack = "=3.1.0"
+solana-program-test = "=3.1.10"
+solana-signer = "=3.0.0"
+solana-transaction = { version = "=3.0.2", features = ["bincode"] }
+spl-token = "=9.0.0"
+tokio = { version = "=1.48.0", features = ["macros", "rt-multi-thread"] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

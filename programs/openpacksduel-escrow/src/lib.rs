@@ -19,7 +19,13 @@ pub mod openpacksduel_escrow {
 
     pub fn initialize_duel(ctx: Context<InitializeDuel>, args: InitializeDuelArgs) -> Result<()> {
         let clock = Clock::get()?;
-        validate_initialization(&args, ctx.accounts.creator.key(), clock.unix_timestamp)?;
+        validate_initialization(
+            &args,
+            ctx.accounts.creator.key(),
+            ctx.accounts.duel.key(),
+            clock.unix_timestamp,
+        )?;
+        validate_payment_mint(ctx.accounts.payment_mint.key())?;
 
         let duel = &mut ctx.accounts.duel;
         duel.version = 3;
@@ -120,10 +126,18 @@ pub mod openpacksduel_escrow {
             args.asset_kind == AssetKind::LegacySplNft,
             EscrowError::UnsupportedAssetStandard
         );
-        require!(
-            ctx.accounts.card_mint.decimals == 0 && ctx.accounts.card_mint.supply == 1,
-            EscrowError::InvalidCardMint
-        );
+        validate_card_mint_policy(
+            ctx.accounts.card_mint.decimals,
+            ctx.accounts.card_mint.supply,
+            matches!(
+                ctx.accounts.card_mint.mint_authority,
+                anchor_lang::solana_program::program_option::COption::None
+            ),
+            matches!(
+                ctx.accounts.card_mint.freeze_authority,
+                anchor_lang::solana_program::program_option::COption::None
+            ),
+        )?;
         require!(
             ctx.accounts.depositor.key() == ctx.accounts.duel.player_for_role(args.role)
                 || ctx.accounts.depositor.key() == ctx.accounts.duel.provider_signer,
@@ -499,8 +513,38 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn close_payment_vault(ctx: Context<ClosePaymentVault>) -> Result<()> {
+    pub fn close_payment_vault(mut ctx: Context<ClosePaymentVault>) -> Result<()> {
         ctx.accounts.duel.require_payment_vault_closable()?;
+        require_keys_eq!(
+            ctx.accounts.excess_destination.owner,
+            ctx.accounts.duel.fee_recipient,
+            EscrowError::InvalidFeeDestination
+        );
+        require_keys_neq!(
+            ctx.accounts.excess_destination.key(),
+            ctx.accounts.payment_vault.key(),
+            EscrowError::InvalidFeeDestination
+        );
+
+        let excess_amount = ctx.accounts.payment_vault.amount;
+        if excess_amount > 0 {
+            transfer_from_duel_vault(
+                &ctx.accounts.duel,
+                &ctx.accounts.payment_vault,
+                &ctx.accounts.payment_mint,
+                &ctx.accounts.excess_destination,
+                &ctx.accounts.token_program,
+                excess_amount,
+            )?;
+            ctx.accounts.payment_vault.reload()?;
+
+            emit!(PaymentExcessSwept {
+                duel: ctx.accounts.duel.key(),
+                payment_mint: ctx.accounts.payment_mint.key(),
+                destination: ctx.accounts.excess_destination.key(),
+                amount: excess_amount,
+            });
+        }
         require!(
             ctx.accounts.payment_vault.amount == 0,
             EscrowError::VaultNotEmpty
@@ -685,6 +729,29 @@ fn determine_outcome(creator_value: u64, opponent_value: u64) -> DuelOutcome {
     }
 }
 
+fn validate_payment_mint(payment_mint: Pubkey) -> Result<()> {
+    require_keys_eq!(
+        payment_mint,
+        token::spl_token::native_mint::ID,
+        EscrowError::UnsupportedPaymentMint
+    );
+    Ok(())
+}
+
+fn validate_card_mint_policy(
+    decimals: u8,
+    supply: u64,
+    mint_authority_revoked: bool,
+    freeze_authority_revoked: bool,
+) -> Result<()> {
+    require!(decimals == 0 && supply == 1, EscrowError::InvalidCardMint);
+    require!(
+        mint_authority_revoked && freeze_authority_revoked,
+        EscrowError::UnsafeCardMintAuthority
+    );
+    Ok(())
+}
+
 fn validate_result_timestamp(duel: &Duel, opened_at: i64, now: i64) -> Result<()> {
     require!(
         opened_at >= duel.created_at
@@ -726,7 +793,12 @@ fn validate_refund_eligibility(duel: &Duel, now: i64) -> Result<()> {
     Ok(())
 }
 
-fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64) -> Result<()> {
+fn validate_initialization(
+    args: &InitializeDuelArgs,
+    creator: Pubkey,
+    duel: Pubkey,
+    now: i64,
+) -> Result<()> {
     require!(args.fee_amount > 0, EscrowError::InvalidFeeAmount);
     require!(
         args.provider_signer != Pubkey::default(),
@@ -736,6 +808,7 @@ fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64)
         args.fee_recipient != Pubkey::default(),
         EscrowError::InvalidFeeRecipient
     );
+    require_keys_neq!(args.fee_recipient, duel, EscrowError::InvalidFeeRecipient);
     require!(
         args.valuation_policy_hash != [0; 32],
         EscrowError::InvalidValuationPolicy
@@ -1090,6 +1163,8 @@ pub struct ClosePaymentVault<'info> {
     /// CHECK: The address constraint binds rent recovery to the duel creator.
     #[account(mut, address = duel.creator @ EscrowError::InvalidRentRecipient)]
     pub rent_recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = payment_mint)]
+    pub excess_destination: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -1513,6 +1588,14 @@ pub struct CustodyVaultClosed {
     pub rent_recipient: Pubkey,
 }
 
+#[event]
+pub struct PaymentExcessSwept {
+    pub duel: Pubkey,
+    pub payment_mint: Pubkey,
+    pub destination: Pubkey,
+    pub amount: u64,
+}
+
 #[error_code]
 pub enum EscrowError {
     #[msg("Per-player fee deposit must be greater than zero")]
@@ -1551,6 +1634,8 @@ pub enum EscrowError {
     UnsupportedAssetStandard,
     #[msg("Card mint must be a zero-decimal, single-supply legacy SPL mint")]
     InvalidCardMint,
+    #[msg("Card mint and freeze authorities must be permanently revoked")]
+    UnsafeCardMintAuthority,
     #[msg("Card depositor must be the bound player or provider signer")]
     InvalidCardDepositor,
     #[msg("A card has already been deposited for this role")]
@@ -1581,6 +1666,8 @@ pub enum EscrowError {
     VaultNotEmpty,
     #[msg("Vault rent must return to the account that funded its creation")]
     InvalidRentRecipient,
+    #[msg("Only the canonical legacy wrapped-SOL mint is supported for devnet fees")]
+    UnsupportedPaymentMint,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
 }
@@ -1657,6 +1744,21 @@ mod tests {
     fn settled_platform_fee_is_exactly_both_disclosed_deposits() {
         assert_eq!(total_fee_deposits(50_000).unwrap(), 100_000);
         assert!(total_fee_deposits(u64::MAX).is_err());
+    }
+
+    #[test]
+    fn devnet_payment_mint_is_exactly_legacy_wrapped_sol() {
+        assert!(validate_payment_mint(token::spl_token::native_mint::ID).is_ok());
+        assert!(validate_payment_mint(Pubkey::new_unique()).is_err());
+    }
+
+    #[test]
+    fn legacy_card_mint_requires_fixed_supply_and_revoked_authorities() {
+        assert!(validate_card_mint_policy(0, 1, true, true).is_ok());
+        assert!(validate_card_mint_policy(1, 1, true, true).is_err());
+        assert!(validate_card_mint_policy(0, 2, true, true).is_err());
+        assert!(validate_card_mint_policy(0, 1, false, true).is_err());
+        assert!(validate_card_mint_policy(0, 1, true, false).is_err());
     }
 
     #[test]

@@ -65,7 +65,7 @@ pub mod openpacksduel_escrow {
             authority: ctx.accounts.player.to_account_info(),
         };
         token::transfer_checked(
-            CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts),
+            CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts),
             stake_amount,
             ctx.accounts.payment_mint.decimals,
         )?;
@@ -96,9 +96,8 @@ pub mod openpacksduel_escrow {
     }
 
     pub fn cancel_unmatched(ctx: Context<CancelUnmatched>) -> Result<()> {
-        require_eq!(
-            ctx.accounts.duel.status,
-            DuelStatus::Waiting,
+        require!(
+            ctx.accounts.duel.status == DuelStatus::Waiting,
             EscrowError::InvalidStatus
         );
         require!(
@@ -208,7 +207,7 @@ fn transfer_from_vault<'info>(
     };
     token::transfer_checked(
         CpiContext::new_with_signer(
-            token_program.to_account_info(),
+            token_program.key(),
             cpi_accounts,
             &[&signer_seeds],
         ),
@@ -395,7 +394,10 @@ pub struct Duel {
 
 impl Duel {
     fn depositor_role(&self, player: Pubkey) -> Result<DepositorRole> {
-        require_eq!(self.status, DuelStatus::Waiting, EscrowError::InvalidStatus);
+        require!(
+            self.status == DuelStatus::Waiting,
+            EscrowError::InvalidStatus
+        );
 
         if player == self.creator {
             require!(!self.creator_deposited, EscrowError::AlreadyDeposited);

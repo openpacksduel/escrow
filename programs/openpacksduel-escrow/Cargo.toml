@@ -11,11 +11,18 @@ crate-type = ["cdylib", "lib"]
 name = "openpacksduel_escrow"
 
 [features]
+anchor-debug = []
 cpi = ["no-entrypoint"]
+custom-heap = []
+custom-panic = []
 default = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 no-entrypoint = []
+no-log-ix-name = []
 
 [dependencies]
 anchor-lang = { version = "=1.1.2", features = ["derive"] }
-anchor-spl = { version = "=1.1.2", default-features = false, features = ["token"] }
+anchor-spl = { version = "=1.1.2", default-features = false, features = ["token", "token_2022"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

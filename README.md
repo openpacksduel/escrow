@@ -31,6 +31,10 @@ matchmaking service, and pack-provider adapter live separately in
   original card and fee deposit without charging the platform fee.
 - Before a provider result is committed, expiry recovery is permissionless and
   returns every payment/card deposit to its bound participant.
+- Once tracked custody has left a vault, anyone can close that empty vault. Its
+  rent returns to the creator for the payment vault and to the signer that paid
+  to create each card vault. Duel and result receipts deliberately remain open
+  so a closed vault cannot erase replay protection or settlement history.
 
 The devnet program address is
 `Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS`. The planned deployment authority
@@ -72,6 +76,9 @@ ID and devnet WSOL payment mint, returns unsigned instruction plans, and rejects
 unsupported card standards. Its IDL provenance is tied to source SHA
 `4aa3bb7560443c0565ded2d6edee67c6a544dd5f` and workflow run
 [`29446296348`](https://github.com/openpacksduel/escrow/actions/runs/29446296348).
+That checked client remains pinned to the last checksummed release until a new
+program artifact and IDL are produced; newly added source instructions must not
+be hand-encoded before that release update.
 
 ## Design documents
 

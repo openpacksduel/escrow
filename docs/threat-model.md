@@ -53,6 +53,7 @@ decoded transaction and committed duel terms before wallet approval.
 | Stuck state after provider timeout | Before result commitment, expiry permits independent permissionless payment/card refunds. After commitment, deterministic settlement is permissionless |
 | Provider changes outcome | One immutable result account per duel plus a globally unique provider/request receipt; no update instruction or privileged winner override exists |
 | Settlement caller redirects assets | Every payment/card destination owner is checked against the deterministic winner or original owner; fee destination is checked against the committed recipient |
+| Vault closer steals rent or closes active custody | Closure is permissionless only after tracked custody leaves; the payment recipient is the creator and each card recipient is its recorded vault payer |
 | Duplicate mutable-account aliasing | Anchor account constraints plus explicit participant and destination checks |
 
 ## Known devnet MVP gaps
@@ -64,9 +65,13 @@ decoded transaction and committed duel terms before wallet approval.
   Metaplex Core, and Token-2022 are unsupported.
 - One deadline covers funding, custody, and provider result submission. Once a
   result is committed, settlement intentionally has no deadline.
+- The provider's `opened_at` timestamp must be within both the accepted clock
+  skew and the duel's committed expiry; it cannot attest a post-expiry opening.
 - Payment-mint allowlisting is not yet governed on-chain.
 - The devnet program ID is reserved but deployment awaits a funded authority.
 - Unsolicited legacy SPL transfers can leave untracked dust in PDA vaults.
+- Empty custody vaults can be closed permissionlessly, but duel and result PDAs
+  intentionally retain rent as the durable replay and audit receipts.
 - The program has not received an independent audit.
 
 No mainnet deployment should accept value while these gaps remain.

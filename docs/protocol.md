@@ -121,8 +121,22 @@ and cancellation. Card values and external pack prices never determine the fee.
 
 ## Required next gates
 
-1. Publish provider result test vectors and an IDL/client package from CI.
-2. Prove Collector Crypt legacy-SPL delivery to each PDA vault on devnet.
-3. Decide and implement pNFT/cNFT/Token-2022 custody separately, if required.
-4. Add upgrade governance, reproducible builds, an external audit, and a bug
+1. Prove Collector Crypt legacy-SPL delivery to each PDA vault on devnet using
+   the checked TypeScript client and publish provider result fixtures.
+2. Decide and implement pNFT/cNFT/Token-2022 custody separately, if required.
+3. Add upgrade governance, reproducible builds, an external audit, and a bug
    bounty before mainnet value is accepted.
+
+## Checked client boundary
+
+The devnet TypeScript client in `clients/typescript` consumes the exact IDL from
+the successful program release workflow at source SHA
+`4aa3bb7560443c0565ded2d6edee67c6a544dd5f`. It is the canonical integration
+surface for PDA derivation and instruction encoding. It also exposes an exact
+ordered-account verifier and monitor representation, including base58
+instruction data and stable hashes.
+
+The client does not expand the on-chain trust boundary: it does not sign, submit,
+or custody anything. It rejects every card asset standard except legacy SPL NFT
+and supports only devnet WSOL fee funding. Provider signer and platform fee
+recipient remain explicit per-duel inputs.

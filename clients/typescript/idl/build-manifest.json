@@ -1,0 +1,20 @@
+{
+  "programName": "openpacksduel_escrow",
+  "programId": "Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS",
+  "sourceSha": "4aa3bb7560443c0565ded2d6edee67c6a544dd5f",
+  "artifact": {
+    "file": "openpacksduel_escrow.so",
+    "bytes": 399160,
+    "sha256": "25aea2690903ebd5745811e6550da7b619209912934a549e072ebbc9f175fd63"
+  },
+  "idl": {
+    "file": "openpacksduel_escrow.json",
+    "sha256": "53ed60b44d5cef022db0301e5d6495ca3bf84486a048c7dd7ce5621a499762e0"
+  },
+  "sourceCargoLockSha256": "404ee28d93cfe532bce772d91eb195eb0a4fdd53fc2f85f7c699b0c193f8526d",
+  "toolchain": {
+    "anchor": "1.1.2",
+    "agave": "3.1.10",
+    "rust": "1.89.0"
+  }
+}

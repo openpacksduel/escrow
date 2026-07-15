@@ -43,6 +43,7 @@ remains pending a funded devnet authority.
 
 ```text
 programs/openpacksduel-escrow/  Anchor program
+clients/typescript/             Checked IDL and devnet TypeScript client
 docs/protocol.md                State machine and trust boundaries
 docs/threat-model.md            Assets, adversaries, and mitigations
 .github/workflows/ci.yml        Formatting, lint, and host tests
@@ -63,6 +64,14 @@ cargo test --workspace
 Do not treat a successful build as an audit. A deployable release requires the
 controls listed in [SECURITY.md](SECURITY.md) and the open hardening work in
 [issue #3](https://github.com/openpacksduel/escrow/issues/3).
+
+App, API, MCP, and agent integrations should use the checked builders in
+[`clients/typescript`](clients/typescript) instead of hand-rolling Anchor
+instruction bytes or PDA seeds. The package fixes the current canonical program
+ID and devnet WSOL payment mint, returns unsigned instruction plans, and rejects
+unsupported card standards. Its IDL provenance is tied to source SHA
+`4aa3bb7560443c0565ded2d6edee67c6a544dd5f` and workflow run
+[`29446296348`](https://github.com/openpacksduel/escrow/actions/runs/29446296348).
 
 ## Design documents
 

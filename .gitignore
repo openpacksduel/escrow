@@ -3,3 +3,4 @@
 target/
 test-ledger/
 *.keypair.json
+node_modules/

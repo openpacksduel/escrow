@@ -2,11 +2,12 @@
 
 ## Goal
 
-Two wallets commit equal payment stakes to a Solana program. A pack provider
-later opens one authenticated pack per player, transfers the resulting card
-assets into protocol custody, and signs an immutable result payload. The program
-verifies that commitment and atomically pays the winner, transfers both card
-sets, and routes the configured fee.
+Two wallets commit equal, disclosed platform-fee deposits to a Solana program.
+Pack purchases happen through the provider outside this program and are not
+represented by those deposits. The provider later transfers one authenticated
+card asset per player into protocol custody and signs an immutable result
+payload. The program verifies that commitment, transfers both cards to the
+winner, and routes only the fee deposits to the configured recipient.
 
 The chain cannot call Jup, PocketPull, Collector Crypt, a TCG price API, or any
 HTTP endpoint. Every off-chain fact must arrive as a signed, replay-protected
@@ -34,9 +35,9 @@ and permissionless even if the provider or application disappears.
 Creates a duel PDA and payment-vault PDA. It commits:
 
 - creator and optional direct opponent;
-- payment mint and equal per-player stake;
+- fee-payment mint and exact per-player platform-fee deposit;
 - provider signer and valuation-policy hash;
-- fee recipient and fee basis points;
+- fee recipient and exact per-player fee amount;
 - absolute expiry and creator-selected nonce.
 
 The nonce allows a wallet to create multiple duels without mutable global state.
@@ -44,7 +45,7 @@ The expiry must be between one minute and seven days from initialization.
 
 ### `fund_duel`
 
-Transfers exactly one stake into the vault. For an open match, the first
+Transfers exactly one disclosed fee deposit into the vault. For an open match, the first
 non-creator depositor becomes the immutable opponent. The duel becomes `Funded`
 only after both deposits succeed.
 
@@ -84,11 +85,11 @@ valuation.
 ### `settle_duel`
 
 Anyone may execute the committed result. The program compares the two unsigned
-integer values itself. The winner receives both card assets and both payment
-stakes less the committed fee. The fee is calculated over the two payment
-stakes, rounded down, capped by the initialization limit, and sent only to the
-precommitted fee-recipient's token account. A tie returns each original card and
-payment and charges no fee. No operator override or alternate winner path exists.
+integer values itself. The winner receives both card assets. The two exact
+fee deposits are sent only to the precommitted fee-recipient's token account.
+A tie returns each original card and fee deposit and charges no fee. No pack
+purchase funds or card-value-based payout are held here, and no operator override
+or alternate winner path exists.
 
 ### `cancel_unmatched`
 
@@ -113,9 +114,10 @@ be added later without changing the result or settlement invariants.
 
 ## Fee semantics
 
-`fee_bps` is committed at initialization and capped at 10%. It applies to the
-combined payment stakes on successful non-tie settlement, rounds down, and is
-zero on ties, refunds, and cancellation. Card values never determine the fee.
+`fee_amount` is the exact per-player platform-fee deposit committed at
+initialization. On a successful non-tie settlement, both deposits go to the
+precommitted fee recipient. They return to the original players on ties, refunds,
+and cancellation. Card values and external pack prices never determine the fee.
 
 ## Required next gates
 

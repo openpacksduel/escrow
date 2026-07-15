@@ -9,8 +9,6 @@ const CARD_VAULT_SEED: &[u8] = b"card-vault";
 const CREATOR_CARD_SEED: &[u8] = b"creator";
 const OPPONENT_CARD_SEED: &[u8] = b"opponent";
 const RESULT_SEED: &[u8] = b"result";
-const MAX_FEE_BPS: u16 = 1_000;
-const BPS_DENOMINATOR: u64 = 10_000;
 const MIN_DUEL_DURATION_SECONDS: i64 = 60;
 const MAX_DUEL_DURATION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const MAX_PROVIDER_CLOCK_SKEW_SECONDS: i64 = 30;
@@ -35,8 +33,7 @@ pub mod openpacksduel_escrow {
         duel.fee_recipient = args.fee_recipient;
         duel.provider_signer = args.provider_signer;
         duel.nonce = args.nonce;
-        duel.stake_amount = args.stake_amount;
-        duel.fee_bps = args.fee_bps;
+        duel.fee_amount = args.fee_amount;
         duel.created_at = clock.unix_timestamp;
         duel.expires_at = args.expires_at;
         duel.creator_deposited = false;
@@ -55,8 +52,7 @@ pub mod openpacksduel_escrow {
             creator: duel.creator,
             opponent: duel.opponent,
             payment_mint: duel.payment_mint,
-            stake_amount: duel.stake_amount,
-            fee_bps: duel.fee_bps,
+            fee_amount: duel.fee_amount,
             expires_at: duel.expires_at,
             provider_signer: duel.provider_signer,
             valuation_policy_hash: duel.valuation_policy_hash,
@@ -69,7 +65,7 @@ pub mod openpacksduel_escrow {
         require_before_expiry(&ctx.accounts.duel)?;
         let player = ctx.accounts.player.key();
         let role = ctx.accounts.duel.depositor_role(player)?;
-        let stake_amount = ctx.accounts.duel.stake_amount;
+        let fee_amount = ctx.accounts.duel.fee_amount;
 
         transfer_checked(
             &ctx.accounts.player_source,
@@ -77,7 +73,7 @@ pub mod openpacksduel_escrow {
             &ctx.accounts.payment_vault,
             &ctx.accounts.player,
             &ctx.accounts.token_program,
-            stake_amount,
+            fee_amount,
         )?;
 
         let duel = &mut ctx.accounts.duel;
@@ -99,7 +95,7 @@ pub mod openpacksduel_escrow {
             duel: duel.key(),
             player,
             role,
-            amount: stake_amount,
+            amount: fee_amount,
             status: duel.status,
         });
 
@@ -281,11 +277,10 @@ pub mod openpacksduel_escrow {
 
         match result.outcome {
             DuelOutcome::CreatorWins => {
-                transfer_payment_pot(
+                transfer_platform_fees(
                     duel,
                     &ctx.accounts.payment_vault,
                     &ctx.accounts.payment_mint,
-                    &ctx.accounts.creator_payment_destination,
                     &ctx.accounts.fee_destination,
                     &ctx.accounts.token_program,
                 )?;
@@ -305,11 +300,10 @@ pub mod openpacksduel_escrow {
                 )?;
             }
             DuelOutcome::OpponentWins => {
-                transfer_payment_pot(
+                transfer_platform_fees(
                     duel,
                     &ctx.accounts.payment_vault,
                     &ctx.accounts.payment_mint,
-                    &ctx.accounts.opponent_payment_destination,
                     &ctx.accounts.fee_destination,
                     &ctx.accounts.token_program,
                 )?;
@@ -335,7 +329,7 @@ pub mod openpacksduel_escrow {
                     &ctx.accounts.payment_mint,
                     &ctx.accounts.creator_payment_destination,
                     &ctx.accounts.token_program,
-                    duel.stake_amount,
+                    duel.fee_amount,
                 )?;
                 transfer_from_duel_vault(
                     duel,
@@ -343,7 +337,7 @@ pub mod openpacksduel_escrow {
                     &ctx.accounts.payment_mint,
                     &ctx.accounts.opponent_payment_destination,
                     &ctx.accounts.token_program,
-                    duel.stake_amount,
+                    duel.fee_amount,
                 )?;
                 transfer_card_from_vault(
                     duel,
@@ -365,7 +359,7 @@ pub mod openpacksduel_escrow {
         let fee_amount = if result.outcome == DuelOutcome::Tie {
             0
         } else {
-            settlement_fee(duel.stake_amount, duel.fee_bps)?
+            total_fee_deposits(duel.fee_amount)?
         };
         let duel = &mut ctx.accounts.duel;
         duel.creator_deposited = false;
@@ -405,7 +399,7 @@ pub mod openpacksduel_escrow {
                 &ctx.accounts.payment_mint,
                 &ctx.accounts.creator_destination,
                 &ctx.accounts.token_program,
-                ctx.accounts.duel.stake_amount,
+                ctx.accounts.duel.fee_amount,
             )?;
         }
 
@@ -444,7 +438,7 @@ pub mod openpacksduel_escrow {
             &ctx.accounts.payment_mint,
             &ctx.accounts.destination,
             &ctx.accounts.token_program,
-            ctx.accounts.duel.stake_amount,
+            ctx.accounts.duel.fee_amount,
         )?;
 
         let duel = &mut ctx.accounts.duel;
@@ -455,7 +449,7 @@ pub mod openpacksduel_escrow {
             duel: duel.key(),
             player,
             role,
-            amount: duel.stake_amount,
+            amount: duel.fee_amount,
             status: duel.status,
         });
 
@@ -571,54 +565,30 @@ fn transfer_card_from_vault<'info>(
     transfer_from_duel_vault(duel, vault, mint, destination, token_program, 1)
 }
 
-fn transfer_payment_pot<'info>(
+fn transfer_platform_fees<'info>(
     duel: &Account<'info, Duel>,
     payment_vault: &Account<'info, TokenAccount>,
     payment_mint: &Account<'info, Mint>,
-    winner_destination: &Account<'info, TokenAccount>,
     fee_destination: &Account<'info, TokenAccount>,
     token_program: &Program<'info, Token>,
 ) -> Result<()> {
-    let total = duel
-        .stake_amount
-        .checked_mul(2)
-        .ok_or(EscrowError::ArithmeticOverflow)?;
-    let fee = settlement_fee(duel.stake_amount, duel.fee_bps)?;
-    let winner_amount = total
-        .checked_sub(fee)
-        .ok_or(EscrowError::ArithmeticOverflow)?;
-
+    let fee = total_fee_deposits(duel.fee_amount)?;
     transfer_from_duel_vault(
         duel,
         payment_vault,
         payment_mint,
-        winner_destination,
+        fee_destination,
         token_program,
-        winner_amount,
+        fee,
     )?;
-    if fee > 0 {
-        transfer_from_duel_vault(
-            duel,
-            payment_vault,
-            payment_mint,
-            fee_destination,
-            token_program,
-            fee,
-        )?;
-    }
     Ok(())
 }
 
-fn settlement_fee(stake_amount: u64, fee_bps: u16) -> Result<u64> {
-    let total = stake_amount
+fn total_fee_deposits(fee_amount: u64) -> Result<u64> {
+    let total = fee_amount
         .checked_mul(2)
         .ok_or(EscrowError::ArithmeticOverflow)?;
-    let fee = total
-        .checked_mul(u64::from(fee_bps))
-        .ok_or(EscrowError::ArithmeticOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(EscrowError::ArithmeticOverflow)?;
-    Ok(fee)
+    Ok(total)
 }
 
 fn determine_outcome(creator_value: u64, opponent_value: u64) -> DuelOutcome {
@@ -656,8 +626,7 @@ fn require_refundable(duel: &Account<Duel>) -> Result<()> {
 }
 
 fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64) -> Result<()> {
-    require!(args.stake_amount > 0, EscrowError::InvalidStakeAmount);
-    require!(args.fee_bps <= MAX_FEE_BPS, EscrowError::InvalidFeeRate);
+    require!(args.fee_amount > 0, EscrowError::InvalidFeeAmount);
     require!(
         args.provider_signer != Pubkey::default(),
         EscrowError::InvalidProviderSigner
@@ -1002,8 +971,7 @@ pub struct RefundExpiredCard<'info> {
 pub struct InitializeDuelArgs {
     pub nonce: u64,
     pub opponent: Option<Pubkey>,
-    pub stake_amount: u64,
-    pub fee_bps: u16,
+    pub fee_amount: u64,
     pub expires_at: i64,
     pub provider_signer: Pubkey,
     pub fee_recipient: Pubkey,
@@ -1046,8 +1014,7 @@ pub struct Duel {
     pub fee_recipient: Pubkey,
     pub provider_signer: Pubkey,
     pub nonce: u64,
-    pub stake_amount: u64,
-    pub fee_bps: u16,
+    pub fee_amount: u64,
     pub created_at: i64,
     pub expires_at: i64,
     pub creator_deposited: bool,
@@ -1248,8 +1215,7 @@ pub struct DuelInitialized {
     pub creator: Pubkey,
     pub opponent: Pubkey,
     pub payment_mint: Pubkey,
-    pub stake_amount: u64,
-    pub fee_bps: u16,
+    pub fee_amount: u64,
     pub expires_at: i64,
     pub provider_signer: Pubkey,
     pub valuation_policy_hash: [u8; 32],
@@ -1330,10 +1296,8 @@ pub struct CardAssetRefunded {
 
 #[error_code]
 pub enum EscrowError {
-    #[msg("Stake amount must be greater than zero")]
-    InvalidStakeAmount,
-    #[msg("Fee rate exceeds the protocol maximum")]
-    InvalidFeeRate,
+    #[msg("Per-player fee deposit must be greater than zero")]
+    InvalidFeeAmount,
     #[msg("Duel expiry is outside the allowed window")]
     InvalidExpiry,
     #[msg("Opponent must be a non-default wallet distinct from the creator")]
@@ -1409,8 +1373,7 @@ mod tests {
             fee_recipient: Pubkey::new_from_array([4; 32]),
             provider_signer: Pubkey::new_from_array([5; 32]),
             nonce: 7,
-            stake_amount: 1_000_000,
-            fee_bps: 250,
+            fee_amount: 50_000,
             created_at: 100,
             expires_at: 200,
             creator_deposited: false,
@@ -1450,9 +1413,9 @@ mod tests {
     }
 
     #[test]
-    fn settlement_fee_is_on_both_stakes_and_rounds_down() {
-        assert_eq!(settlement_fee(1_000_001, 250).unwrap(), 50_000);
-        assert_eq!(settlement_fee(1_000_000, 0).unwrap(), 0);
+    fn settled_platform_fee_is_exactly_both_disclosed_deposits() {
+        assert_eq!(total_fee_deposits(50_000).unwrap(), 100_000);
+        assert!(total_fee_deposits(u64::MAX).is_err());
     }
 
     #[test]

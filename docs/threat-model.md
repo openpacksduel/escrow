@@ -2,7 +2,7 @@
 
 ## Protected assets
 
-- both players' payment deposits;
+- both players' disclosed platform-fee deposits (not pack-purchase funds);
 - card assets or redemption rights produced by each pack;
 - provider result integrity and uniqueness;
 - the protocol fee destination;
@@ -47,7 +47,8 @@ decoded transaction and committed duel terms before wallet approval.
 | Unsupported token behavior breaks custody | Account owners must be the legacy SPL Token Program; asset kind must be `LegacySplNft`; mint must have zero decimals and supply one. pNFT/cNFT/Token-2022 are rejected or cannot satisfy the account schema |
 | Price manipulation | Precommitted policy hash, bounded quote age, multiple-source/fallback rules, integer minor units |
 | NFT substitution | Provider result binds the exact mints already held by the two role-specific PDA vaults. Collection/metadata verification remains a documented devnet limitation |
-| Fee-recipient swap | Recipient and basis points committed in duel state before funding |
+| Fee-recipient or amount swap | Recipient and exact per-player fee amount are committed in duel state before funding |
+| App treats fee vault as pack funding | Contract state stores an exact `fee_amount`; protocol docs exclude pack purchases and winner payment payouts from this program |
 | Upgrade-authority compromise | Multisig/timelock governance, published upgrade policy, verified builds |
 | Stuck state after provider timeout | Before result commitment, expiry permits independent permissionless payment/card refunds. After commitment, deterministic settlement is permissionless |
 | Provider changes outcome | One immutable result account per duel plus a globally unique provider/request receipt; no update instruction or privileged winner override exists |

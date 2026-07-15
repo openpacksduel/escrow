@@ -15,7 +15,8 @@ matchmaking service, and pack-provider adapter live separately in
 ## Current contract
 
 - A creator opens either a direct challenge or an open match.
-- Both players deposit the same amount of a legacy SPL token into a PDA vault.
+- Both players deposit the same disclosed platform-fee amount in a legacy SPL
+  token into a PDA vault. Pack purchases are external and never enter this vault.
 - An open match binds its opponent when the first non-creator deposits.
 - A creator can cancel only before an opponent has joined.
 - After the deadline, anyone can trigger a refund to either player's owned token
@@ -25,8 +26,9 @@ matchmaking service, and pack-provider adapter live separately in
   participants, both card mints, both integer values, and the precommitted
   valuation-policy hash.
 - A globally unique provider request ID creates a replay receipt PDA.
-- Anyone may settle: the higher committed value receives both card assets and the
-  payment pot; a tie returns each original card and payment without a fee.
+- Anyone may settle: the higher committed value receives both card assets and
+  both fee deposits go to the committed platform recipient. A tie returns each
+  original card and fee deposit without charging the platform fee.
 - Before a provider result is committed, expiry recovery is permissionless and
   returns every payment/card deposit to its bound participant.
 

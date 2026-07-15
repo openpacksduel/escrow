@@ -13,10 +13,7 @@ const MAX_DUEL_DURATION_SECONDS: i64 = 7 * 24 * 60 * 60;
 pub mod openpacksduel_escrow {
     use super::*;
 
-    pub fn initialize_duel(
-        ctx: Context<InitializeDuel>,
-        args: InitializeDuelArgs,
-    ) -> Result<()> {
+    pub fn initialize_duel(ctx: Context<InitializeDuel>, args: InitializeDuelArgs) -> Result<()> {
         let clock = Clock::get()?;
         validate_initialization(&args, ctx.accounts.creator.key(), clock.unix_timestamp)?;
 
@@ -99,7 +96,11 @@ pub mod openpacksduel_escrow {
     }
 
     pub fn cancel_unmatched(ctx: Context<CancelUnmatched>) -> Result<()> {
-        require_eq!(ctx.accounts.duel.status, DuelStatus::Waiting, EscrowError::InvalidStatus);
+        require_eq!(
+            ctx.accounts.duel.status,
+            DuelStatus::Waiting,
+            EscrowError::InvalidStatus
+        );
         require!(
             !ctx.accounts.duel.opponent_deposited,
             EscrowError::OpponentAlreadyJoined
@@ -131,7 +132,10 @@ pub mod openpacksduel_escrow {
     pub fn refund_expired(ctx: Context<RefundExpired>, player: Pubkey) -> Result<()> {
         let clock = Clock::get()?;
         require!(
-            matches!(ctx.accounts.duel.status, DuelStatus::Waiting | DuelStatus::Funded),
+            matches!(
+                ctx.accounts.duel.status,
+                DuelStatus::Waiting | DuelStatus::Funded
+            ),
             EscrowError::InvalidStatus
         );
         require!(
@@ -213,11 +217,7 @@ fn transfer_from_vault<'info>(
     )
 }
 
-fn validate_initialization(
-    args: &InitializeDuelArgs,
-    creator: Pubkey,
-    now: i64,
-) -> Result<()> {
+fn validate_initialization(args: &InitializeDuelArgs, creator: Pubkey, now: i64) -> Result<()> {
     require!(args.stake_amount > 0, EscrowError::InvalidStakeAmount);
     require!(args.fee_bps <= MAX_FEE_BPS, EscrowError::InvalidFeeRate);
     require!(
@@ -519,9 +519,7 @@ mod tests {
     fn open_match_accepts_creator_and_first_opponent() {
         let duel = waiting_duel();
         assert!(duel.depositor_role(duel.creator).is_ok());
-        assert!(duel
-            .depositor_role(Pubkey::new_from_array([6; 32]))
-            .is_ok());
+        assert!(duel.depositor_role(Pubkey::new_from_array([6; 32])).is_ok());
     }
 
     #[test]

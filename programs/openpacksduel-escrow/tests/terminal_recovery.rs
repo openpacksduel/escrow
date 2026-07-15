@@ -384,7 +384,12 @@ async fn freezeable_legacy_card_mint_is_rejected_without_moving_the_asset() {
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;
     let (duel, payment_vault) = duel_addresses(fixture.creator.pubkey());
-    let now = context.genesis_config().creation_time;
+    let now = context
+        .banks_client
+        .get_sysvar::<Clock>()
+        .await
+        .expect("clock query must succeed")
+        .unix_timestamp;
 
     send(
         &mut context,
@@ -465,7 +470,12 @@ async fn terminal_payment_dust_sweeps_to_committed_fee_recipient_before_close() 
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;
     let (duel, payment_vault) = duel_addresses(fixture.creator.pubkey());
-    let now = context.genesis_config().creation_time;
+    let now = context
+        .banks_client
+        .get_sysvar::<Clock>()
+        .await
+        .expect("clock query must succeed")
+        .unix_timestamp;
 
     send(
         &mut context,
@@ -559,7 +569,12 @@ async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
         &[b"card-vault", duel.as_ref(), b"creator"],
         &openpacksduel_escrow::id(),
     );
-    let now = context.genesis_config().creation_time;
+    let now = context
+        .banks_client
+        .get_sysvar::<Clock>()
+        .await
+        .expect("clock query must succeed")
+        .unix_timestamp;
 
     send(
         &mut context,
@@ -618,20 +633,19 @@ async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
         .await
         .expect("immutable creator card must enter custody");
 
-    let clock: Clock = context
+    let mut expired_clock: Clock = context
         .banks_client
         .get_sysvar()
         .await
         .expect("clock query must succeed");
-    context
-        .warp_to_slot(clock.slot.saturating_add(200_000))
-        .expect("clock warp must succeed");
-    let expired_clock: Clock = context
+    expired_clock.unix_timestamp = now + 600;
+    context.set_sysvar(&expired_clock);
+    let observed_expired_clock: Clock = context
         .banks_client
         .get_sysvar()
         .await
         .expect("expired clock query must succeed");
-    assert!(expired_clock.unix_timestamp >= now + 600);
+    assert_eq!(observed_expired_clock.unix_timestamp, now + 600);
 
     let refund = anchor_lang::solana_program::instruction::Instruction {
         program_id: openpacksduel_escrow::id(),
@@ -724,7 +738,12 @@ async fn settled_losing_role_card_returns_to_winner_before_close() {
         ],
         &openpacksduel_escrow::id(),
     );
-    let now = context.genesis_config().creation_time;
+    let now = context
+        .banks_client
+        .get_sysvar::<Clock>()
+        .await
+        .expect("clock query must succeed")
+        .unix_timestamp;
 
     send(
         &mut context,

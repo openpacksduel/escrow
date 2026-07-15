@@ -1,10 +1,8 @@
 #![allow(deprecated)]
 
 use anchor_lang::{
-    prelude::{AccountInfo, Clock, Pubkey, Rent},
-    solana_program::{
-        entrypoint::ProgramResult, program_option::COption, system_instruction, system_program,
-    },
+    prelude::{Clock, Pubkey, Rent},
+    solana_program::{program_option::COption, system_instruction, system_program},
     InstructionData, ToAccountMetas,
 };
 use openpacksduel_escrow::{
@@ -22,18 +20,6 @@ use spl_token::state::{Account as LegacyTokenAccount, AccountState, Mint as Lega
 const FEE_AMOUNT: u64 = 1_000_000;
 const DUST_AMOUNT: u64 = 41_000;
 const NONCE: u64 = 7;
-
-fn process_escrow_instruction(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let program_id = Box::leak(Box::new(*program_id));
-    let accounts = Box::leak(accounts.to_vec().into_boxed_slice());
-    let instruction_data = Box::leak(instruction_data.to_vec().into_boxed_slice());
-
-    openpacksduel_escrow::entry(program_id, accounts, instruction_data)
-}
 
 struct Fixture {
     creator: Keypair,
@@ -75,11 +61,7 @@ fn program_test() -> (ProgramTest, Fixture) {
     let opponent_card_win_destination = Pubkey::new_unique();
     let rent = Rent::default();
 
-    let mut test = ProgramTest::new(
-        "openpacksduel_escrow",
-        openpacksduel_escrow::id(),
-        processor!(process_escrow_instruction),
-    );
+    let mut test = ProgramTest::new("openpacksduel_escrow", openpacksduel_escrow::id(), None);
     test.add_program(
         "spl_token",
         spl_token::id(),
@@ -396,6 +378,7 @@ async fn token_amount(context: &mut ProgramTestContext, address: Pubkey) -> u64 
 }
 
 #[tokio::test]
+#[ignore = "runs against the SBF artifact in the Program release workflow"]
 async fn freezeable_legacy_card_mint_is_rejected_without_moving_the_asset() {
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;
@@ -476,6 +459,7 @@ async fn freezeable_legacy_card_mint_is_rejected_without_moving_the_asset() {
 }
 
 #[tokio::test]
+#[ignore = "runs against the SBF artifact in the Program release workflow"]
 async fn terminal_payment_dust_sweeps_to_committed_fee_recipient_before_close() {
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;
@@ -565,6 +549,7 @@ async fn terminal_payment_dust_sweeps_to_committed_fee_recipient_before_close() 
 }
 
 #[tokio::test]
+#[ignore = "runs against the SBF artifact in the Program release workflow"]
 async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;
@@ -716,6 +701,7 @@ async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
 }
 
 #[tokio::test]
+#[ignore = "runs against the SBF artifact in the Program release workflow"]
 async fn settled_losing_role_card_returns_to_winner_before_close() {
     let (test, fixture) = program_test();
     let mut context = test.start_with_context().await;

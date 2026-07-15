@@ -81,11 +81,12 @@ App, API, MCP, and agent integrations should use the checked builders in
 instruction bytes or PDA seeds. The package fixes the current canonical program
 ID and devnet WSOL payment mint, returns unsigned instruction plans, and rejects
 unsupported card standards. Its IDL provenance is tied to source SHA
-`4aa3bb7560443c0565ded2d6edee67c6a544dd5f` and workflow run
-[`29446296348`](https://github.com/openpacksduel/escrow/actions/runs/29446296348).
-That checked client remains pinned to the last checksummed release until a new
-program artifact and IDL are produced; newly added source instructions must not
-be hand-encoded before that release update.
+`5268637d961672588c70a1c3b1ccbf6d6ab5f5cb` and workflow run
+[`29458570612`](https://github.com/openpacksduel/escrow/actions/runs/29458570612).
+The v4 client includes terminal custody-vault close builders and an exact-layout
+Duel account decoder. It remains pinned to that checksummed release until a new
+program artifact and IDL are produced; source instructions must not be
+hand-encoded before the corresponding release update.
 
 ## Design documents
 

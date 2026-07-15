@@ -26,6 +26,24 @@ const ACCOUNT_CONSTRAINTS = {
     ["payment_mint", false, false],
     ["token_program", false, false],
   ],
+  close_card_vault: [
+    ["caller", true, false],
+    ["duel", false, false],
+    ["card_vault", false, true],
+    ["card_mint", false, false],
+    ["rent_recipient", false, true],
+    ["recovery_destination", false, true],
+    ["token_program", false, false],
+  ],
+  close_payment_vault: [
+    ["caller", true, false],
+    ["duel", false, false],
+    ["payment_vault", false, true],
+    ["payment_mint", false, false],
+    ["rent_recipient", false, true],
+    ["excess_destination", false, true],
+    ["token_program", false, false],
+  ],
   deposit_card_asset: [
     ["depositor", true, true],
     ["duel", false, true],
@@ -186,7 +204,11 @@ function assertCanonicalAddresses(
     assertAddress(duel, deriveDuelPda(creator, nonce)[0], "duel");
   }
 
-  if (name === "deposit_card_asset" || name === "refund_expired_card") {
+  if (
+    name === "close_card_vault" ||
+    name === "deposit_card_asset" ||
+    name === "refund_expired_card"
+  ) {
     const encodedRole = instruction.data[8];
     if (!duel || (encodedRole !== 0 && encodedRole !== 1)) {
       throw new Error(`${name} contains an invalid player role`);

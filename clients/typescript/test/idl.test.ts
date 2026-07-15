@@ -2,20 +2,38 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+const EXPECTED_FILES = {
+  "openpacksduel_escrow.json":
+    "f16eda95787367db629051203dac8a5db61794f1c048528ecfecd868245e070d",
+  "build-manifest.json":
+    "1555ead5de9c038d80658dcdd58abba0e6d37ccf6d1f5925fc06b20cb957d4ef",
+} as const;
+
 describe("checked IDL provenance", () => {
   test("matches the verified workflow artifact", async () => {
-    const idl = await readFile(
-      new URL("../idl/openpacksduel_escrow.json", import.meta.url),
-    );
-    const manifest = await readFile(
-      new URL("../idl/build-manifest.json", import.meta.url),
-    );
+    const [checksums, manifestBytes, provenanceBytes] = await Promise.all([
+      readFile(new URL("../idl/SHA256SUMS", import.meta.url), "utf8"),
+      readFile(new URL("../idl/build-manifest.json", import.meta.url)),
+      readFile(new URL("../idl/provenance.json", import.meta.url)),
+    ]);
+    const manifest = JSON.parse(manifestBytes.toString());
+    const provenance = JSON.parse(provenanceBytes.toString());
 
-    expect(createHash("sha256").update(idl).digest("hex")).toBe(
-      "53ed60b44d5cef022db0301e5d6495ca3bf84486a048c7dd7ce5621a499762e0",
+    for (const [file, expectedHash] of Object.entries(EXPECTED_FILES)) {
+      const bytes = await readFile(new URL(`../idl/${file}`, import.meta.url));
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+        expectedHash,
+      );
+      expect(checksums).toContain(`${expectedHash}  ${file}`);
+      expect(provenance.files[file]).toBe(expectedHash);
+    }
+    expect(manifest.sourceSha).toBe(provenance.sourceSha);
+    expect(manifest.idl.sha256).toBe(
+      EXPECTED_FILES["openpacksduel_escrow.json"],
     );
-    expect(createHash("sha256").update(manifest).digest("hex")).toBe(
-      "0ea30ac7a9f95dc9fcb8eaa06a66294d895e9bc38b7149fc88620dfeb0b5afb1",
+    expect(provenance.workflowRunId).toBe(29458570612);
+    expect(provenance.artifactSha256SumsFileSha256).toBe(
+      "56170c9830591a7900592bed94cb1e8affc043f435da80bf9b6df620e7123f39",
     );
   });
 });

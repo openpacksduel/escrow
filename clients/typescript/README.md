@@ -1,14 +1,15 @@
 # `@openpacksduel/escrow-client`
 
-Devnet-only TypeScript builders for OpenPacks Duel escrow v2. The package is the
+Devnet-only TypeScript builders for OpenPacks Duel escrow v4. The package is the
 checked client boundary for the app, API, MCP server, and agents. It derives
 protocol PDAs and encodes instructions with the exact IDL emitted by the
 successful `main` release workflow at source SHA
-`4aa3bb7560443c0565ded2d6edee67c6a544dd5f`.
+`5268637d961672588c70a1c3b1ccbf6d6ab5f5cb` in workflow run
+[`29458570612`](https://github.com/openpacksduel/escrow/actions/runs/29458570612).
 
 This client never creates keypairs, signs transactions, submits transactions,
 or holds assets. It fixes the program address and payment mint to the current
-unaudited devnet deployment contract. Provider signer and fee recipient are
+unaudited devnet deployment target. Provider signer and fee recipient are
 always supplied by the caller.
 
 ## Devnet funding flow
@@ -59,6 +60,21 @@ instruction.
 Card builders accept only `legacy-spl-nft`. Programmable NFTs, compressed NFTs,
 and Token-2022 fail before an instruction is created. Extending this list
 requires a separate on-chain custody implementation and audit.
+
+## Terminal vault recovery and account decoding
+
+`createClosePaymentVaultInstruction` and
+`createCloseCardVaultInstruction` encode the permissionless terminal cleanup
+paths. Their destination accounts are still enforced against persisted Duel
+state on-chain; callers cannot redirect rent or recovered assets. The card
+builder retains the same legacy-SPL-only client boundary as card deposit and
+refund builders.
+
+`decodeDuelAccount` accepts only the v4 Duel layout emitted by the checked IDL:
+the exact discriminator, version `4`, and account length `560` are required.
+Older, truncated, extended, or discriminator-mismatched data fails closed. The
+decoded result includes both card-vault rent recipients and both terminal asset
+beneficiaries.
 
 ## Artifact verification
 

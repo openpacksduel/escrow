@@ -161,10 +161,12 @@ and cancellation. Card values and external pack prices never determine the fee.
 
 The devnet TypeScript client in `clients/typescript` consumes the exact IDL from
 the successful program release workflow at source SHA
-`4aa3bb7560443c0565ded2d6edee67c6a544dd5f`. It is the canonical integration
+`5268637d961672588c70a1c3b1ccbf6d6ab5f5cb`. It is the canonical integration
 surface for PDA derivation and instruction encoding. It also exposes an exact
 ordered-account verifier and monitor representation, including base58
-instruction data and stable hashes.
+instruction data and stable hashes. Its Duel decoder requires the exact v4
+discriminator, version, and 560-byte account layout, including persisted card
+rent recipients and terminal beneficiaries.
 
 The client does not expand the on-chain trust boundary: it does not sign, submit,
 or custody anything. It rejects every card asset standard except legacy SPL NFT

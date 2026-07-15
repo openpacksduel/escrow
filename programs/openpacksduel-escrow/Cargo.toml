@@ -1,0 +1,21 @@
+[package]
+name = "openpacksduel-escrow"
+version = "0.1.0"
+description = "Open-source Solana escrow for authenticated pack-opening duels"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/openpacksduel/escrow"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "openpacksduel_escrow"
+
+[features]
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+no-entrypoint = []
+
+[dependencies]
+anchor-lang = { version = "=1.1.2", features = ["derive"] }
+anchor-spl = { version = "=1.1.2", default-features = false, features = ["token"] }

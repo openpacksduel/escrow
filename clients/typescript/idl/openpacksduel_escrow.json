@@ -1,0 +1,1912 @@
+{
+  "address": "Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS",
+  "metadata": {
+    "name": "openpacksduel_escrow",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Open-source Solana escrow for authenticated pack-opening duels",
+    "repository": "https://github.com/openpacksduel/escrow"
+  },
+  "instructions": [
+    {
+      "name": "cancel_unmatched",
+      "discriminator": [
+        173,
+        237,
+        198,
+        26,
+        183,
+        202,
+        133,
+        228
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          },
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "creator_destination",
+          "writable": true
+        },
+        {
+          "name": "payment_mint",
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit_card_asset",
+      "discriminator": [
+        212,
+        169,
+        85,
+        35,
+        162,
+        91,
+        119,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "depositor_source",
+          "writable": true
+        },
+        {
+          "name": "card_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              },
+              {
+                "kind": "arg",
+                "path": "args.role"
+              }
+            ]
+          }
+        },
+        {
+          "name": "card_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "DepositCardAssetArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "fund_duel",
+      "discriminator": [
+        135,
+        82,
+        1,
+        209,
+        16,
+        87,
+        207,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_source",
+          "writable": true
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          },
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "payment_mint",
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_duel",
+      "discriminator": [
+        197,
+        5,
+        158,
+        89,
+        174,
+        188,
+        134,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "args.nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "InitializeDuelArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "refund_expired_card",
+      "discriminator": [
+        160,
+        130,
+        63,
+        132,
+        223,
+        30,
+        235,
+        144
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "card_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              },
+              {
+                "kind": "arg",
+                "path": "role"
+              }
+            ]
+          }
+        },
+        {
+          "name": "card_mint"
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "role",
+          "type": {
+            "defined": {
+              "name": "PlayerRole"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "refund_expired_payment",
+      "discriminator": [
+        82,
+        5,
+        192,
+        101,
+        25,
+        133,
+        163,
+        209
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          },
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "payment_mint",
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "player",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "settle_duel",
+      "discriminator": [
+        148,
+        90,
+        251,
+        130,
+        217,
+        144,
+        190,
+        239
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          },
+          "relations": [
+            "result_commitment"
+          ]
+        },
+        {
+          "name": "result_commitment",
+          "writable": true
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          },
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "payment_mint",
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "creator_payment_destination",
+          "writable": true
+        },
+        {
+          "name": "opponent_payment_destination",
+          "writable": true
+        },
+        {
+          "name": "fee_destination",
+          "writable": true
+        },
+        {
+          "name": "creator_card_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  114,
+                  101,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_card_mint"
+        },
+        {
+          "name": "creator_card_destination",
+          "writable": true
+        },
+        {
+          "name": "opponent_card_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  112,
+                  112,
+                  111,
+                  110,
+                  101,
+                  110,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "opponent_card_mint"
+        },
+        {
+          "name": "opponent_card_destination",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "submit_result",
+      "discriminator": [
+        240,
+        42,
+        89,
+        180,
+        10,
+        239,
+        9,
+        214
+      ],
+      "accounts": [
+        {
+          "name": "provider_signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "result_commitment",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "provider_signer"
+              },
+              {
+                "kind": "arg",
+                "path": "args.provider_request_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "SubmitResultArgs"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Duel",
+      "discriminator": [
+        126,
+        229,
+        210,
+        60,
+        177,
+        135,
+        124,
+        224
+      ]
+    },
+    {
+      "name": "ResultCommitment",
+      "discriminator": [
+        203,
+        124,
+        124,
+        69,
+        99,
+        81,
+        98,
+        109
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CardAssetDeposited",
+      "discriminator": [
+        40,
+        94,
+        70,
+        106,
+        38,
+        205,
+        146,
+        125
+      ]
+    },
+    {
+      "name": "CardAssetRefunded",
+      "discriminator": [
+        240,
+        232,
+        83,
+        226,
+        161,
+        99,
+        180,
+        216
+      ]
+    },
+    {
+      "name": "DuelCancelled",
+      "discriminator": [
+        138,
+        79,
+        20,
+        163,
+        207,
+        11,
+        111,
+        213
+      ]
+    },
+    {
+      "name": "DuelFunded",
+      "discriminator": [
+        110,
+        7,
+        229,
+        118,
+        61,
+        160,
+        95,
+        190
+      ]
+    },
+    {
+      "name": "DuelInitialized",
+      "discriminator": [
+        127,
+        133,
+        87,
+        38,
+        56,
+        53,
+        187,
+        253
+      ]
+    },
+    {
+      "name": "DuelSettled",
+      "discriminator": [
+        254,
+        160,
+        50,
+        193,
+        155,
+        112,
+        122,
+        64
+      ]
+    },
+    {
+      "name": "PaymentRefunded",
+      "discriminator": [
+        197,
+        178,
+        204,
+        105,
+        247,
+        64,
+        159,
+        4
+      ]
+    },
+    {
+      "name": "ResultCommitted",
+      "discriminator": [
+        197,
+        81,
+        109,
+        4,
+        128,
+        173,
+        1,
+        109
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidFeeAmount",
+      "msg": "Per-player fee deposit must be greater than zero"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidExpiry",
+      "msg": "Duel expiry is outside the allowed window"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidOpponent",
+      "msg": "Opponent must be a non-default wallet distinct from the creator"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidProviderSigner",
+      "msg": "Provider signer must be configured"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidFeeRecipient",
+      "msg": "Fee recipient must be configured"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidValuationPolicy",
+      "msg": "Valuation policy hash must be configured"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidStatus",
+      "msg": "Instruction is not valid for the duel's current status"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidPlayer",
+      "msg": "Wallet is not a participant in this duel"
+    },
+    {
+      "code": 6008,
+      "name": "AlreadyDeposited",
+      "msg": "This wallet has already deposited"
+    },
+    {
+      "code": 6009,
+      "name": "OpponentAlreadyJoined",
+      "msg": "The opponent has already joined"
+    },
+    {
+      "code": 6010,
+      "name": "DuelNotExpired",
+      "msg": "The duel has not expired"
+    },
+    {
+      "code": 6011,
+      "name": "DuelExpired",
+      "msg": "The duel is already expired"
+    },
+    {
+      "code": 6012,
+      "name": "DepositNotFound",
+      "msg": "No refundable payment deposit exists for this player"
+    },
+    {
+      "code": 6013,
+      "name": "CardDepositNotFound",
+      "msg": "No refundable card deposit exists for this role"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidDestinationOwner",
+      "msg": "Refund or settlement destination is not owned by the required player"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidFeeDestination",
+      "msg": "Fee destination is not owned by the committed fee recipient"
+    },
+    {
+      "code": 6016,
+      "name": "UnsupportedAssetStandard",
+      "msg": "Only legacy SPL NFTs are supported by the devnet MVP"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidCardMint",
+      "msg": "Card mint must be a zero-decimal, single-supply legacy SPL mint"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidCardDepositor",
+      "msg": "Card depositor must be the bound player or provider signer"
+    },
+    {
+      "code": 6019,
+      "name": "CardAlreadyDeposited",
+      "msg": "A card has already been deposited for this role"
+    },
+    {
+      "code": 6020,
+      "name": "InvalidCardVault",
+      "msg": "Card vault does not match the vault committed to the duel"
+    },
+    {
+      "code": 6021,
+      "name": "ResultDuelMismatch",
+      "msg": "Result commitment is bound to a different duel"
+    },
+    {
+      "code": 6022,
+      "name": "ResultPlayerMismatch",
+      "msg": "Result participant does not match the duel participant"
+    },
+    {
+      "code": 6023,
+      "name": "ResultAssetMismatch",
+      "msg": "Result asset does not match the card in custody"
+    },
+    {
+      "code": 6024,
+      "name": "ValuationPolicyMismatch",
+      "msg": "Result valuation policy does not match the precommitted policy"
+    },
+    {
+      "code": 6025,
+      "name": "InvalidProviderRequest",
+      "msg": "Provider request ID must be non-zero and globally unique per provider"
+    },
+    {
+      "code": 6026,
+      "name": "InvalidResultTimestamp",
+      "msg": "Provider result timestamp is outside the accepted duel window"
+    },
+    {
+      "code": 6027,
+      "name": "ResultAlreadySettled",
+      "msg": "Result has already been settled"
+    },
+    {
+      "code": 6028,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    }
+  ],
+  "types": [
+    {
+      "name": "AssetKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "LegacySplNft"
+          },
+          {
+            "name": "ProgrammableNft"
+          },
+          {
+            "name": "CompressedNft"
+          },
+          {
+            "name": "Token2022"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CardAssetDeposited",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CardAssetRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "DuelStatus"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DepositCardAssetArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Duel",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "payment_vault_bump",
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "DuelStatus"
+              }
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "creator_deposited",
+            "type": "bool"
+          },
+          {
+            "name": "opponent_deposited",
+            "type": "bool"
+          },
+          {
+            "name": "creator_card_deposited",
+            "type": "bool"
+          },
+          {
+            "name": "opponent_card_deposited",
+            "type": "bool"
+          },
+          {
+            "name": "creator_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "result_commitment",
+            "type": "pubkey"
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelFunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "DuelStatus"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "provider_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelOutcome",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "CreatorWins"
+          },
+          {
+            "name": "OpponentWins"
+          },
+          {
+            "name": "Tie"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "result_commitment",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "DuelOutcome"
+              }
+            }
+          },
+          {
+            "name": "winner",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_value",
+            "type": "u64"
+          },
+          {
+            "name": "opponent_value",
+            "type": "u64"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DuelStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Waiting"
+          },
+          {
+            "name": "Funded"
+          },
+          {
+            "name": "AwaitingResult"
+          },
+          {
+            "name": "ReadyToSettle"
+          },
+          {
+            "name": "Refunding"
+          },
+          {
+            "name": "Settled"
+          },
+          {
+            "name": "Cancelled"
+          },
+          {
+            "name": "Refunded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeDuelArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "opponent",
+            "type": {
+              "option": "pubkey"
+            }
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "provider_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentRefunded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "DuelStatus"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerRole",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Creator"
+          },
+          {
+            "name": "Opponent"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResultCommitment",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_request_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "opponent_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_value",
+            "type": "u64"
+          },
+          {
+            "name": "opponent_value",
+            "type": "u64"
+          },
+          {
+            "name": "opened_at",
+            "type": "i64"
+          },
+          {
+            "name": "committed_at",
+            "type": "i64"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "DuelOutcome"
+              }
+            }
+          },
+          {
+            "name": "settled",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResultCommitted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "result_commitment",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_signer",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_request_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "opponent_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_value",
+            "type": "u64"
+          },
+          {
+            "name": "opponent_value",
+            "type": "u64"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "DuelOutcome"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "SubmitResultArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "provider_request_id",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "opponent_asset_kind",
+            "type": {
+              "defined": {
+                "name": "AssetKind"
+              }
+            }
+          },
+          {
+            "name": "valuation_policy_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "creator_value",
+            "type": "u64"
+          },
+          {
+            "name": "opponent_value",
+            "type": "u64"
+          },
+          {
+            "name": "opened_at",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}

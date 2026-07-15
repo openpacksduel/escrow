@@ -26,3 +26,27 @@ jobs:
         run: cargo +stable clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo +stable test --workspace
+
+  typescript-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: clients/typescript
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.10
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify checked release metadata
+        run: cd idl && sha256sum --check SHA256SUMS
+      - name: Check formatting and lint
+        run: bun run lint
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Test
+        run: bun run test
+      - name: Build package
+        run: bun run build

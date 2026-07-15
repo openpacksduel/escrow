@@ -1,0 +1,39 @@
+{
+  "name": "@openpacksduel/escrow-client",
+  "version": "0.1.0",
+  "description": "Devnet-only TypeScript builders for the OpenPacks Duel escrow",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "idl"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./idl": "./idl/openpacksduel_escrow.json",
+    "./provenance": "./idl/provenance.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "biome check .",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anchor-lang/core": "1.1.2",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.98.4",
+    "bs58": "6.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.12",
+    "@types/bun": "1.3.10",
+    "typescript": "6.0.3"
+  }
+}

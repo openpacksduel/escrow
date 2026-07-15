@@ -62,6 +62,7 @@ fn program_test() -> (ProgramTest, Fixture) {
     let rent = Rent::default();
 
     let mut test = ProgramTest::new("openpacksduel_escrow", openpacksduel_escrow::id(), None);
+    test.prefer_bpf(false);
     test.add_program(
         "spl_token",
         spl_token::id(),

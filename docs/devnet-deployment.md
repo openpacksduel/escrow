@@ -68,6 +68,20 @@ The generated program keypair under `target/deploy` is deliberately excluded.
 The source commit, program ID, toolchain versions, file sizes, and hashes are
 recorded in the manifest.
 
+## First-deployment compatibility gate
+
+A read-only `getAccountInfo` query against the canonical Solana devnet RPC on
+2026-07-16 returned no account for the reserved program ID. No earlier program
+deployment or v2 Duel account state exists at that address, so v4 can be the
+first deployment without an account migration.
+
+This observation is not permanent evidence. Immediately before the first
+deployment, re-run the program-account lookup and require the address to remain
+absent. If it exists, stop: do not deploy or document compatibility until its
+owner, executable metadata, deployed bytes, upgrade authority, and any existing
+Duel accounts have been audited. The v4 Duel account is 560 bytes and is not
+compatible with the former 432-byte layout.
+
 ## Manual deploy
 
 1. Open **Actions → Program release → Run workflow**.

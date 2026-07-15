@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertEscrowInstructionConstraints,
+  createCloseCardVaultInstruction,
+  createClosePaymentVaultInstruction,
   createDepositCardAssetInstruction,
   createInitializeDuelInstruction,
   createRefundExpiredCardInstruction,
@@ -199,6 +201,93 @@ describe("instruction fixtures", () => {
         bytes([82, 5, 192, 101, 25, 133, 163, 209], fixture.opponent.toBytes()),
       ),
     );
+  });
+
+  test("encodes both terminal vault-close variants with exact account order", () => {
+    const card = createCloseCardVaultInstruction({
+      caller: fixture.caller,
+      duel: fixture.creator,
+      role: "opponent",
+      cardMint: fixture.opponentCardMint,
+      rentRecipient: fixture.opponent,
+      recoveryDestination: fixture.feeRecipient,
+      assetStandard: "legacy-spl-nft",
+    });
+    const payment = createClosePaymentVaultInstruction({
+      caller: fixture.caller,
+      duel: fixture.creator,
+      rentRecipient: fixture.creator,
+      excessDestination: fixture.feeRecipient,
+    });
+
+    expect(card.data).toEqual(
+      Buffer.from(bytes([123, 45, 120, 22, 36, 197, 169, 86], [1])),
+    );
+    expect(payment.data).toEqual(
+      Buffer.from([107, 79, 245, 212, 102, 70, 163, 243]),
+    );
+    expect(
+      describeEscrowInstruction(card).accounts.map(({ role }) => role),
+    ).toEqual([
+      "caller",
+      "duel",
+      "card_vault",
+      "card_mint",
+      "rent_recipient",
+      "recovery_destination",
+      "token_program",
+    ]);
+    expect(
+      describeEscrowInstruction(payment).accounts.map(({ role }) => role),
+    ).toEqual([
+      "caller",
+      "duel",
+      "payment_vault",
+      "payment_mint",
+      "rent_recipient",
+      "excess_destination",
+      "token_program",
+    ]);
+    expect(assertEscrowInstructionConstraints(card)).toBe("close_card_vault");
+    expect(assertEscrowInstructionConstraints(payment)).toBe(
+      "close_payment_vault",
+    );
+  });
+
+  test("rejects a close-card role that does not match its vault PDA", () => {
+    const instruction = createCloseCardVaultInstruction({
+      caller: fixture.caller,
+      duel: fixture.creator,
+      role: "opponent",
+      cardMint: fixture.opponentCardMint,
+      rentRecipient: fixture.opponent,
+      recoveryDestination: fixture.feeRecipient,
+      assetStandard: "legacy-spl-nft",
+    });
+    const tampered = {
+      ...instruction,
+      keys: instruction.keys,
+      data: Buffer.from(instruction.data),
+    };
+    tampered.data[8] = 0;
+
+    expect(() => assertEscrowInstructionConstraints(tampered)).toThrow(
+      "card_vault must be",
+    );
+  });
+
+  test("fails closed for unsupported close-card asset standards", () => {
+    expect(() =>
+      createCloseCardVaultInstruction({
+        caller: fixture.caller,
+        duel: fixture.creator,
+        role: "creator",
+        cardMint: fixture.creatorCardMint,
+        rentRecipient: fixture.creator,
+        recoveryDestination: fixture.creator,
+        assetStandard: "token-2022",
+      }),
+    ).toThrow("Unsupported card asset standard");
   });
 
   test("rejects altered signer constraints before monitor persistence", () => {

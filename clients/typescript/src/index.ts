@@ -1,5 +1,13 @@
 export {
+  type DecodedDuelAccount,
+  type DuelStatus,
+  decodeDuelAccount,
+} from "./accounts.js";
+export {
   type CardAssetStandard,
+  ESCROW_DUEL_ACCOUNT_SIZE,
+  ESCROW_DUEL_DISCRIMINATOR,
+  ESCROW_DUEL_VERSION,
   ESCROW_NETWORK,
   ESCROW_PROGRAM_ID,
   type EscrowNetwork,
@@ -7,7 +15,11 @@ export {
 } from "./constants.js";
 export {
   type CancelUnmatchedInput,
+  type CloseCardVaultInput,
+  type ClosePaymentVaultInput,
   createCancelUnmatchedInstruction,
+  createCloseCardVaultInstruction,
+  createClosePaymentVaultInstruction,
   createDepositCardAssetInstruction,
   createFundDuelInstruction,
   createInitializeDuelInstruction,

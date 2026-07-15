@@ -1,4 +1,8 @@
-import { BorshInstructionCoder, type Idl } from "@anchor-lang/core";
+import {
+  BorshAccountsCoder,
+  BorshInstructionCoder,
+  type Idl,
+} from "@anchor-lang/core";
 import checkedIdl from "../idl/openpacksduel_escrow.json" with { type: "json" };
 
 const EXPECTED_ADDRESS = "Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS";
@@ -16,4 +20,5 @@ function loadCheckedIdl(value: unknown): Idl {
 }
 
 export const ESCROW_IDL = loadCheckedIdl(checkedIdl);
+export const accountCoder = new BorshAccountsCoder(ESCROW_IDL);
 export const instructionCoder = new BorshInstructionCoder(ESCROW_IDL);

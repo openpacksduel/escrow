@@ -99,6 +99,196 @@
       "args": []
     },
     {
+      "name": "close_card_vault",
+      "discriminator": [
+        123,
+        45,
+        120,
+        22,
+        36,
+        197,
+        169,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "card_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  97,
+                  114,
+                  100,
+                  45,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              },
+              {
+                "kind": "arg",
+                "path": "role"
+              }
+            ]
+          }
+        },
+        {
+          "name": "card_mint"
+        },
+        {
+          "name": "rent_recipient",
+          "writable": true
+        },
+        {
+          "name": "recovery_destination",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "role",
+          "type": {
+            "defined": {
+              "name": "PlayerRole"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_payment_vault",
+      "discriminator": [
+        107,
+        79,
+        245,
+        212,
+        102,
+        70,
+        163,
+        243
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "signer": true
+        },
+        {
+          "name": "duel",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  117,
+                  101,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel.creator",
+                "account": "Duel"
+              },
+              {
+                "kind": "account",
+                "path": "duel.nonce",
+                "account": "Duel"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payment_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "duel"
+              }
+            ]
+          },
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "payment_mint",
+          "relations": [
+            "duel"
+          ]
+        },
+        {
+          "name": "rent_recipient",
+          "writable": true
+        },
+        {
+          "name": "excess_destination",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "deposit_card_asset",
       "discriminator": [
         212,
@@ -904,6 +1094,32 @@
       ]
     },
     {
+      "name": "CardExcessSwept",
+      "discriminator": [
+        159,
+        38,
+        82,
+        2,
+        0,
+        84,
+        97,
+        176
+      ]
+    },
+    {
+      "name": "CustodyVaultClosed",
+      "discriminator": [
+        203,
+        57,
+        222,
+        40,
+        185,
+        193,
+        168,
+        238
+      ]
+    },
+    {
       "name": "DuelCancelled",
       "discriminator": [
         138,
@@ -953,6 +1169,19 @@
         112,
         122,
         64
+      ]
+    },
+    {
+      "name": "PaymentExcessSwept",
+      "discriminator": [
+        66,
+        78,
+        192,
+        237,
+        168,
+        215,
+        151,
+        40
       ]
     },
     {
@@ -1075,56 +1304,91 @@
     },
     {
       "code": 6018,
+      "name": "UnsafeCardMintAuthority",
+      "msg": "Card mint and freeze authorities must be permanently revoked"
+    },
+    {
+      "code": 6019,
       "name": "InvalidCardDepositor",
       "msg": "Card depositor must be the bound player or provider signer"
     },
     {
-      "code": 6019,
+      "code": 6020,
       "name": "CardAlreadyDeposited",
       "msg": "A card has already been deposited for this role"
     },
     {
-      "code": 6020,
+      "code": 6021,
       "name": "InvalidCardVault",
       "msg": "Card vault does not match the vault committed to the duel"
     },
     {
-      "code": 6021,
+      "code": 6022,
       "name": "ResultDuelMismatch",
       "msg": "Result commitment is bound to a different duel"
     },
     {
-      "code": 6022,
+      "code": 6023,
       "name": "ResultPlayerMismatch",
       "msg": "Result participant does not match the duel participant"
     },
     {
-      "code": 6023,
+      "code": 6024,
       "name": "ResultAssetMismatch",
       "msg": "Result asset does not match the card in custody"
     },
     {
-      "code": 6024,
+      "code": 6025,
       "name": "ValuationPolicyMismatch",
       "msg": "Result valuation policy does not match the precommitted policy"
     },
     {
-      "code": 6025,
+      "code": 6026,
       "name": "InvalidProviderRequest",
       "msg": "Provider request ID must be non-zero and globally unique per provider"
     },
     {
-      "code": 6026,
+      "code": 6027,
       "name": "InvalidResultTimestamp",
       "msg": "Provider result timestamp is outside the accepted duel window"
     },
     {
-      "code": 6027,
+      "code": 6028,
       "name": "ResultAlreadySettled",
       "msg": "Result has already been settled"
     },
     {
-      "code": 6028,
+      "code": 6029,
+      "name": "ResultAlreadyCommitted",
+      "msg": "A provider result has already been committed and must be settled"
+    },
+    {
+      "code": 6030,
+      "name": "IncompleteCustody",
+      "msg": "The duel does not have every payment and card deposit required for settlement"
+    },
+    {
+      "code": 6031,
+      "name": "CustodyStillTracked",
+      "msg": "The custody vault still has a tracked deposit"
+    },
+    {
+      "code": 6032,
+      "name": "VaultNotEmpty",
+      "msg": "The custody vault still contains tokens"
+    },
+    {
+      "code": 6033,
+      "name": "InvalidRentRecipient",
+      "msg": "Vault rent must return to the account that funded its creation"
+    },
+    {
+      "code": 6034,
+      "name": "UnsupportedPaymentMint",
+      "msg": "Only the canonical legacy wrapped-SOL mint is supported for devnet fees"
+    },
+    {
+      "code": 6035,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     }
@@ -1226,6 +1490,83 @@
                 "name": "DuelStatus"
               }
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CardExcessSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "PlayerRole"
+              }
+            }
+          },
+          {
+            "name": "card_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "destination",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CustodyVaultClosed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_kind",
+            "type": {
+              "defined": {
+                "name": "CustodyVaultKind"
+              }
+            }
+          },
+          {
+            "name": "rent_recipient",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CustodyVaultKind",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Payment"
+          },
+          {
+            "name": "CreatorCard"
+          },
+          {
+            "name": "OpponentCard"
           }
         ]
       }
@@ -1349,6 +1690,22 @@
           },
           {
             "name": "opponent_card_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_rent_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_rent_recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator_card_terminal_beneficiary",
+            "type": "pubkey"
+          },
+          {
+            "name": "opponent_card_terminal_beneficiary",
             "type": "pubkey"
           },
           {
@@ -1592,6 +1949,30 @@
                 32
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PaymentExcessSwept",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "duel",
+            "type": "pubkey"
+          },
+          {
+            "name": "payment_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "destination",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           }
         ]
       }

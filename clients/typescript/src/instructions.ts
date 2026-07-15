@@ -302,6 +302,60 @@ export function createCancelUnmatchedInstruction(
   );
 }
 
+export interface ClosePaymentVaultInput {
+  caller: PublicKey;
+  duel: PublicKey;
+  rentRecipient: PublicKey;
+  excessDestination: PublicKey;
+}
+
+export function createClosePaymentVaultInstruction(
+  input: ClosePaymentVaultInput,
+): TransactionInstruction {
+  return buildInstruction(
+    "close_payment_vault",
+    [
+      readonlySigner("caller", input.caller),
+      readonly("duel", input.duel),
+      writable("payment_vault", derivePaymentVaultPda(input.duel)[0]),
+      readonly("payment_mint", NATIVE_MINT),
+      writable("rent_recipient", input.rentRecipient),
+      writable("excess_destination", input.excessDestination),
+      readonly("token_program", TOKEN_PROGRAM_ID),
+    ],
+    {},
+  );
+}
+
+export interface CloseCardVaultInput {
+  caller: PublicKey;
+  duel: PublicKey;
+  role: PlayerRole;
+  cardMint: PublicKey;
+  rentRecipient: PublicKey;
+  recoveryDestination: PublicKey;
+  assetStandard: CardAssetStandard;
+}
+
+export function createCloseCardVaultInstruction(
+  input: CloseCardVaultInput,
+): TransactionInstruction {
+  assertLegacySplNft(input.assetStandard);
+  return buildInstruction(
+    "close_card_vault",
+    [
+      readonlySigner("caller", input.caller),
+      readonly("duel", input.duel),
+      writable("card_vault", deriveCardVaultPda(input.duel, input.role)[0]),
+      readonly("card_mint", input.cardMint),
+      writable("rent_recipient", input.rentRecipient),
+      writable("recovery_destination", input.recoveryDestination),
+      readonly("token_program", TOKEN_PROGRAM_ID),
+    ],
+    { role: anchorRole(input.role) },
+  );
+}
+
 export interface RefundExpiredPaymentInput {
   caller: PublicKey;
   duel: PublicKey;

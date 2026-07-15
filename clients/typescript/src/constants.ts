@@ -5,6 +5,11 @@ export const ESCROW_PROGRAM_ID = new PublicKey(
 );
 
 export const ESCROW_NETWORK = "solana-devnet" as const;
+export const ESCROW_DUEL_VERSION = 4 as const;
+export const ESCROW_DUEL_ACCOUNT_SIZE = 560 as const;
+export const ESCROW_DUEL_DISCRIMINATOR = [
+  126, 229, 210, 60, 177, 135, 124, 224,
+] as const;
 
 export type EscrowNetwork = typeof ESCROW_NETWORK;
 export type PlayerRole = "creator" | "opponent";

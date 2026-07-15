@@ -1,6 +1,8 @@
+#![allow(deprecated)]
+
 use anchor_lang::{
-    prelude::{Pubkey, Rent},
-    solana_program::{program_option::COption, system_program},
+    prelude::{AccountInfo, Pubkey, Rent},
+    solana_program::{entrypoint::ProgramResult, program_option::COption, system_program},
     InstructionData, ToAccountMetas,
 };
 use openpacksduel_escrow::{
@@ -17,6 +19,18 @@ use spl_token::state::{Account as LegacyTokenAccount, AccountState, Mint as Lega
 const FEE_AMOUNT: u64 = 1_000_000;
 const DUST_AMOUNT: u64 = 41_000;
 const NONCE: u64 = 7;
+
+fn process_escrow_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let program_id = *program_id;
+    let accounts = accounts.to_vec();
+    let instruction_data = instruction_data.to_vec();
+
+    openpacksduel_escrow::entry(&program_id, &accounts, &instruction_data)
+}
 
 struct Fixture {
     creator: Keypair,
@@ -47,7 +61,7 @@ fn program_test() -> (ProgramTest, Fixture) {
     let mut test = ProgramTest::new(
         "openpacksduel_escrow",
         openpacksduel_escrow::id(),
-        processor!(openpacksduel_escrow::entry),
+        processor!(process_escrow_instruction),
     );
     test.add_program(
         "spl_token",

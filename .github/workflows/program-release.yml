@@ -267,12 +267,14 @@ jobs:
           rent_lamports=$(solana rent "$artifact_bytes" \
             --url "$DEVNET_RPC_URL" \
             --keypair "$authority_path" \
-            --lamports | awk '{print $1}')
+            --lamports \
+            --output json-compact | jq -r '.rentExemptMinimumLamports')
           recommended_lamports=$((rent_lamports * 2 + 10000000))
           balance_lamports=$(solana balance "$EXPECTED_DEPLOY_AUTHORITY" \
             --url "$DEVNET_RPC_URL" \
             --keypair "$authority_path" \
-            --lamports | awk '{print $1}')
+            --lamports \
+            --output json-compact | jq -r '.lamports')
           if (( balance_lamports < recommended_lamports )); then
             echo "Authority balance ${balance_lamports} lamports is below the deployment safety floor ${recommended_lamports} lamports." >&2
             echo "The floor covers two program-sized rent allocations plus 0.01 SOL for deployment fees." >&2

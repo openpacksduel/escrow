@@ -9,6 +9,7 @@ use anchor_lang::{
 };
 use openpacksduel_escrow::{
     accounts, instruction, AssetKind, DepositCardAssetArgs, InitializeDuelArgs, PlayerRole,
+    SubmitResultArgs,
 };
 use solana_account::Account;
 use solana_keypair::Keypair;
@@ -37,33 +38,41 @@ fn process_escrow_instruction(
 struct Fixture {
     creator: Keypair,
     opponent: Keypair,
-    provider_signer: Pubkey,
+    provider_signer: Keypair,
     fee_recipient: Pubkey,
     creator_payment_source: Pubkey,
     opponent_payment_source: Pubkey,
     creator_payment_destination: Pubkey,
+    opponent_payment_destination: Pubkey,
     excess_destination: Pubkey,
     freezeable_card_mint: Pubkey,
     freezeable_card_source: Pubkey,
     immutable_card_mint: Pubkey,
     immutable_card_source: Pubkey,
     immutable_card_destination: Pubkey,
+    opponent_immutable_card_mint: Pubkey,
+    opponent_immutable_card_source: Pubkey,
+    opponent_card_win_destination: Pubkey,
 }
 
 fn program_test() -> (ProgramTest, Fixture) {
     let creator = Keypair::new();
     let opponent = Keypair::new();
-    let provider_signer = Pubkey::new_unique();
+    let provider_signer = Keypair::new();
     let fee_recipient = Pubkey::new_unique();
     let creator_payment_source = Pubkey::new_unique();
     let opponent_payment_source = Pubkey::new_unique();
     let creator_payment_destination = Pubkey::new_unique();
+    let opponent_payment_destination = Pubkey::new_unique();
     let excess_destination = Pubkey::new_unique();
     let freezeable_card_mint = Pubkey::new_unique();
     let freezeable_card_source = Pubkey::new_unique();
     let immutable_card_mint = Pubkey::new_unique();
     let immutable_card_source = Pubkey::new_unique();
     let immutable_card_destination = Pubkey::new_unique();
+    let opponent_immutable_card_mint = Pubkey::new_unique();
+    let opponent_immutable_card_source = Pubkey::new_unique();
+    let opponent_card_win_destination = Pubkey::new_unique();
     let rent = Rent::default();
 
     let mut test = ProgramTest::new(
@@ -78,6 +87,7 @@ fn program_test() -> (ProgramTest, Fixture) {
     );
     test.add_account(creator.pubkey(), system_account(10_000_000_000));
     test.add_account(opponent.pubkey(), system_account(10_000_000_000));
+    test.add_account(provider_signer.pubkey(), system_account(10_000_000_000));
     test.add_account(
         spl_token::native_mint::id(),
         mint_account(
@@ -115,6 +125,16 @@ fn program_test() -> (ProgramTest, Fixture) {
         creator_payment_destination,
         token_account(
             creator.pubkey(),
+            spl_token::native_mint::id(),
+            0,
+            true,
+            &rent,
+        ),
+    );
+    test.add_account(
+        opponent_payment_destination,
+        token_account(
+            opponent.pubkey(),
             spl_token::native_mint::id(),
             0,
             true,
@@ -163,6 +183,39 @@ fn program_test() -> (ProgramTest, Fixture) {
         immutable_card_destination,
         token_account(creator.pubkey(), immutable_card_mint, 0, false, &rent),
     );
+    test.add_account(
+        opponent_immutable_card_mint,
+        mint_account(
+            LegacyMint {
+                mint_authority: COption::None,
+                supply: 1,
+                decimals: 0,
+                is_initialized: true,
+                freeze_authority: COption::None,
+            },
+            &rent,
+        ),
+    );
+    test.add_account(
+        opponent_immutable_card_source,
+        token_account(
+            opponent.pubkey(),
+            opponent_immutable_card_mint,
+            1,
+            false,
+            &rent,
+        ),
+    );
+    test.add_account(
+        opponent_card_win_destination,
+        token_account(
+            creator.pubkey(),
+            opponent_immutable_card_mint,
+            0,
+            false,
+            &rent,
+        ),
+    );
 
     (
         test,
@@ -174,12 +227,16 @@ fn program_test() -> (ProgramTest, Fixture) {
             creator_payment_source,
             opponent_payment_source,
             creator_payment_destination,
+            opponent_payment_destination,
             excess_destination,
             freezeable_card_mint,
             freezeable_card_source,
             immutable_card_mint,
             immutable_card_source,
             immutable_card_destination,
+            opponent_immutable_card_mint,
+            opponent_immutable_card_source,
+            opponent_card_win_destination,
         },
     )
 }
@@ -275,7 +332,7 @@ fn initialize_duel_instruction(
                 opponent: Some(fixture.opponent.pubkey()),
                 fee_amount: FEE_AMOUNT,
                 expires_at: now + 600,
-                provider_signer: fixture.provider_signer,
+                provider_signer: fixture.provider_signer.pubkey(),
                 fee_recipient: fixture.fee_recipient,
                 valuation_policy_hash: [9; 32],
             },
@@ -653,6 +710,225 @@ async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
     assert!(context
         .banks_client
         .get_account(card_vault)
+        .await
+        .expect("vault query must succeed")
+        .is_none());
+}
+
+#[tokio::test]
+async fn settled_losing_role_card_returns_to_winner_before_close() {
+    let (test, fixture) = program_test();
+    let mut context = test.start_with_context().await;
+    let (duel, payment_vault) = duel_addresses(fixture.creator.pubkey());
+    let (creator_card_vault, _) = Pubkey::find_program_address(
+        &[b"card-vault", duel.as_ref(), b"creator"],
+        &openpacksduel_escrow::id(),
+    );
+    let (opponent_card_vault, _) = Pubkey::find_program_address(
+        &[b"card-vault", duel.as_ref(), b"opponent"],
+        &openpacksduel_escrow::id(),
+    );
+    let provider_request_id = [7; 32];
+    let (result_commitment, _) = Pubkey::find_program_address(
+        &[
+            b"result",
+            fixture.provider_signer.pubkey().as_ref(),
+            provider_request_id.as_ref(),
+        ],
+        &openpacksduel_escrow::id(),
+    );
+    let now = context.genesis_config().creation_time;
+
+    send(
+        &mut context,
+        &[initialize_duel_instruction(
+            &fixture,
+            duel,
+            payment_vault,
+            now,
+        )],
+        &[&fixture.creator],
+    )
+    .await
+    .expect("duel initialization must succeed");
+    send(
+        &mut context,
+        &[
+            fund_duel_instruction(
+                fixture.creator.pubkey(),
+                fixture.creator_payment_source,
+                duel,
+                payment_vault,
+            ),
+            fund_duel_instruction(
+                fixture.opponent.pubkey(),
+                fixture.opponent_payment_source,
+                duel,
+                payment_vault,
+            ),
+        ],
+        &[&fixture.creator, &fixture.opponent],
+    )
+    .await
+    .expect("both exact fee deposits must succeed");
+
+    let creator_deposit = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::DepositCardAsset {
+            depositor: fixture.creator.pubkey(),
+            duel,
+            depositor_source: fixture.immutable_card_source,
+            card_vault: creator_card_vault,
+            card_mint: fixture.immutable_card_mint,
+            token_program: spl_token::id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: instruction::DepositCardAsset {
+            args: DepositCardAssetArgs {
+                role: PlayerRole::Creator,
+                asset_kind: AssetKind::LegacySplNft,
+            },
+        }
+        .data(),
+    };
+    let opponent_deposit = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::DepositCardAsset {
+            depositor: fixture.opponent.pubkey(),
+            duel,
+            depositor_source: fixture.opponent_immutable_card_source,
+            card_vault: opponent_card_vault,
+            card_mint: fixture.opponent_immutable_card_mint,
+            token_program: spl_token::id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: instruction::DepositCardAsset {
+            args: DepositCardAssetArgs {
+                role: PlayerRole::Opponent,
+                asset_kind: AssetKind::LegacySplNft,
+            },
+        }
+        .data(),
+    };
+    send(
+        &mut context,
+        &[creator_deposit, opponent_deposit],
+        &[&fixture.creator, &fixture.opponent],
+    )
+    .await
+    .expect("both immutable cards must enter custody");
+
+    let opened_clock: Clock = context
+        .banks_client
+        .get_sysvar()
+        .await
+        .expect("result clock query must succeed");
+    let submit_result = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::SubmitResult {
+            provider_signer: fixture.provider_signer.pubkey(),
+            duel,
+            result_commitment,
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: instruction::SubmitResult {
+            args: SubmitResultArgs {
+                duel,
+                provider_request_id,
+                creator: fixture.creator.pubkey(),
+                opponent: fixture.opponent.pubkey(),
+                creator_card_mint: fixture.immutable_card_mint,
+                opponent_card_mint: fixture.opponent_immutable_card_mint,
+                creator_asset_kind: AssetKind::LegacySplNft,
+                opponent_asset_kind: AssetKind::LegacySplNft,
+                valuation_policy_hash: [9; 32],
+                creator_value: 2,
+                opponent_value: 1,
+                opened_at: opened_clock.unix_timestamp,
+            },
+        }
+        .data(),
+    };
+    send(&mut context, &[submit_result], &[&fixture.provider_signer])
+        .await
+        .expect("provider result must commit a creator win");
+
+    let settle = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::SettleDuel {
+            caller: context.payer.pubkey(),
+            duel,
+            result_commitment,
+            payment_vault,
+            payment_mint: spl_token::native_mint::id(),
+            creator_payment_destination: fixture.creator_payment_destination,
+            opponent_payment_destination: fixture.opponent_payment_destination,
+            fee_destination: fixture.excess_destination,
+            creator_card_vault,
+            creator_card_mint: fixture.immutable_card_mint,
+            creator_card_destination: fixture.immutable_card_destination,
+            opponent_card_vault,
+            opponent_card_mint: fixture.opponent_immutable_card_mint,
+            opponent_card_destination: fixture.opponent_card_win_destination,
+            token_program: spl_token::id(),
+        }
+        .to_account_metas(None),
+        data: instruction::SettleDuel {}.data(),
+    };
+    send(&mut context, &[settle], &[])
+        .await
+        .expect("permissionless creator-win settlement must succeed");
+    assert_eq!(
+        token_amount(&mut context, fixture.opponent_card_win_destination).await,
+        1
+    );
+
+    let redeposit = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
+        &fixture.opponent_card_win_destination,
+        &fixture.opponent_immutable_card_mint,
+        &opponent_card_vault,
+        &fixture.creator.pubkey(),
+        &[],
+        1,
+        0,
+    )
+    .expect("winner card redeposit instruction must encode");
+    send(&mut context, &[redeposit], &[&fixture.creator])
+        .await
+        .expect("winner must be able to redeposit the losing-role card");
+
+    let close = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::CloseCardVault {
+            caller: context.payer.pubkey(),
+            duel,
+            card_vault: opponent_card_vault,
+            card_mint: fixture.opponent_immutable_card_mint,
+            rent_recipient: fixture.opponent.pubkey(),
+            recovery_destination: fixture.opponent_card_win_destination,
+            token_program: spl_token::id(),
+        }
+        .to_account_metas(None),
+        data: instruction::CloseCardVault {
+            role: PlayerRole::Opponent,
+        }
+        .data(),
+    };
+    send(&mut context, &[close], &[])
+        .await
+        .expect("terminal losing-role vault must return its card to the winner");
+
+    assert_eq!(
+        token_amount(&mut context, fixture.opponent_card_win_destination).await,
+        1
+    );
+    assert!(context
+        .banks_client
+        .get_account(opponent_card_vault)
         .await
         .expect("vault query must succeed")
         .is_none());

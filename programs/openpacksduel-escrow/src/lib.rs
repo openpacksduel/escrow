@@ -30,7 +30,7 @@ pub mod openpacksduel_escrow {
         validate_payment_mint(ctx.accounts.payment_mint.key())?;
 
         let duel = &mut ctx.accounts.duel;
-        duel.version = 3;
+        duel.version = 4;
         duel.bump = ctx.bumps.duel;
         duel.payment_vault_bump = ctx.bumps.payment_vault;
         duel.status = DuelStatus::Waiting;
@@ -54,6 +54,8 @@ pub mod openpacksduel_escrow {
         duel.opponent_card_vault = Pubkey::default();
         duel.creator_card_rent_recipient = Pubkey::default();
         duel.opponent_card_rent_recipient = Pubkey::default();
+        duel.creator_card_terminal_beneficiary = Pubkey::default();
+        duel.opponent_card_terminal_beneficiary = Pubkey::default();
         duel.result_commitment = Pubkey::default();
         duel.valuation_policy_hash = args.valuation_policy_hash;
 
@@ -375,6 +377,7 @@ pub mod openpacksduel_escrow {
             total_fee_deposits(duel.fee_amount)?
         };
         let duel = &mut ctx.accounts.duel;
+        duel.set_terminal_card_beneficiaries(ctx.accounts.result_commitment.outcome);
         duel.creator_deposited = false;
         duel.opponent_deposited = false;
         duel.creator_card_deposited = false;
@@ -591,7 +594,7 @@ pub mod openpacksduel_escrow {
         );
         require_keys_eq!(
             ctx.accounts.recovery_destination.owner,
-            ctx.accounts.duel.player_for_role(role),
+            ctx.accounts.duel.card_terminal_beneficiary(role),
             EscrowError::InvalidDestinationOwner
         );
         require_keys_neq!(
@@ -1302,6 +1305,8 @@ pub struct Duel {
     pub opponent_card_vault: Pubkey,
     pub creator_card_rent_recipient: Pubkey,
     pub opponent_card_rent_recipient: Pubkey,
+    pub creator_card_terminal_beneficiary: Pubkey,
+    pub opponent_card_terminal_beneficiary: Pubkey,
     pub result_commitment: Pubkey,
     pub valuation_policy_hash: [u8; 32],
 }
@@ -1389,12 +1394,38 @@ impl Duel {
                 self.creator_card_mint = mint;
                 self.creator_card_vault = vault;
                 self.creator_card_rent_recipient = rent_recipient;
+                self.creator_card_terminal_beneficiary = self.creator;
             }
             PlayerRole::Opponent => {
                 self.opponent_card_deposited = true;
                 self.opponent_card_mint = mint;
                 self.opponent_card_vault = vault;
                 self.opponent_card_rent_recipient = rent_recipient;
+                self.opponent_card_terminal_beneficiary = self.opponent;
+            }
+        }
+    }
+
+    fn card_terminal_beneficiary(&self, role: PlayerRole) -> Pubkey {
+        match role {
+            PlayerRole::Creator => self.creator_card_terminal_beneficiary,
+            PlayerRole::Opponent => self.opponent_card_terminal_beneficiary,
+        }
+    }
+
+    fn set_terminal_card_beneficiaries(&mut self, outcome: DuelOutcome) {
+        match outcome {
+            DuelOutcome::CreatorWins => {
+                self.creator_card_terminal_beneficiary = self.creator;
+                self.opponent_card_terminal_beneficiary = self.creator;
+            }
+            DuelOutcome::OpponentWins => {
+                self.creator_card_terminal_beneficiary = self.opponent;
+                self.opponent_card_terminal_beneficiary = self.opponent;
+            }
+            DuelOutcome::Tie => {
+                self.creator_card_terminal_beneficiary = self.creator;
+                self.opponent_card_terminal_beneficiary = self.opponent;
             }
         }
     }
@@ -1444,7 +1475,8 @@ impl Duel {
         require!(!self.card_deposited(role), EscrowError::CustodyStillTracked);
         require!(
             self.card_vault(role) != Pubkey::default()
-                && self.card_rent_recipient(role) != Pubkey::default(),
+                && self.card_rent_recipient(role) != Pubkey::default()
+                && self.card_terminal_beneficiary(role) != Pubkey::default(),
             EscrowError::CardDepositNotFound
         );
         Ok(())
@@ -1737,7 +1769,7 @@ mod tests {
 
     fn waiting_duel() -> Duel {
         Duel {
-            version: 2,
+            version: 4,
             bump: 1,
             payment_vault_bump: 2,
             status: DuelStatus::Waiting,
@@ -1761,6 +1793,8 @@ mod tests {
             opponent_card_vault: Pubkey::default(),
             creator_card_rent_recipient: Pubkey::default(),
             opponent_card_rent_recipient: Pubkey::default(),
+            creator_card_terminal_beneficiary: Pubkey::default(),
+            opponent_card_terminal_beneficiary: Pubkey::default(),
             result_commitment: Pubkey::default(),
             valuation_policy_hash: [9; 32],
         }
@@ -1913,6 +1947,32 @@ mod tests {
         assert!(duel.require_payment_vault_closable().is_err());
         duel.creator_deposited = false;
         assert!(duel.require_payment_vault_closable().is_ok());
+    }
+
+    #[test]
+    fn non_tie_settlement_persists_winner_as_both_card_beneficiaries() {
+        let mut duel = waiting_duel();
+        duel.opponent = Pubkey::new_from_array([6; 32]);
+
+        duel.set_terminal_card_beneficiaries(DuelOutcome::CreatorWins);
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Creator),
+            duel.creator
+        );
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Opponent),
+            duel.creator
+        );
+
+        duel.set_terminal_card_beneficiaries(DuelOutcome::OpponentWins);
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Creator),
+            duel.opponent
+        );
+        assert_eq!(
+            duel.card_terminal_beneficiary(PlayerRole::Opponent),
+            duel.opponent
+        );
     }
 
     #[test]

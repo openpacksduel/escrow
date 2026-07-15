@@ -37,9 +37,10 @@ matchmaking service, and pack-provider adapter live separately in
 - Once tracked custody has left a vault, anyone can close it. The payment vault
   first synchronizes raw SOL, then all untracked excess sweeps to the
   precommitted fee recipient. Any NFT sent back to a terminal card vault returns
-  to its original role player. Rent returns to the creator for the payment vault
-  and to the signer that paid to create each card vault. Duel and result receipts
-  deliberately remain open so a closed vault
+  to its persisted beneficiary: the original role player after refund/tie, or
+  the winner after a non-tie settlement. Rent returns to the creator for the
+  payment vault and to the signer that paid to create each card vault. Duel and
+  result receipts deliberately remain open so a closed vault
   cannot erase replay protection or settlement history.
 
 The devnet program address is

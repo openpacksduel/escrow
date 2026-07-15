@@ -55,7 +55,7 @@ decoded transaction and committed duel terms before wallet approval.
 | Settlement caller redirects assets | Every payment/card destination owner is checked against the deterministic winner or original owner; fee destination is checked against the committed recipient |
 | Vault closer steals rent or closes active custody | Closure is permissionless only after tracked custody leaves; the payment recipient is the creator and each card recipient is its recorded vault payer |
 | Raw SOL or token dust strands payment-vault rent | Terminal closure first synchronizes the WSOL account, then sweeps the entire residual balance only to a token account owned by the precommitted fee recipient before closing the vault |
-| A terminal NFT is sent back to its open card vault | Terminal closure sweeps every residual unit only to a token account owned by the original player for that role before returning vault rent to the recorded payer |
+| A terminal NFT is sent back to its open card vault | Each vault persists its legal terminal beneficiary: the original role player for refund/tie, or the winner for non-tie settlement. Closure sweeps every residual unit only to that beneficiary before returning vault rent to the recorded payer |
 | Duplicate mutable-account aliasing | Anchor account constraints plus explicit participant and destination checks |
 
 ## Known devnet MVP gaps

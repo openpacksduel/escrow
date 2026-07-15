@@ -7,25 +7,36 @@ matchmaking service, and pack-provider adapter live separately in
 [`openpacksduel/app`](https://github.com/openpacksduel/app).
 
 > [!WARNING]
-> This is an unaudited foundation, not a production deployment. The current
-> program supports duel creation, equal SPL-token deposits, unmatched
-> cancellation, and permissionless expiry refunds. Provider attestations, NFT
-> custody, winner settlement, governance, and verified builds remain gated work.
+> This is an unaudited **devnet MVP**, not a production deployment. It deliberately
+> accepts only zero-decimal, single-supply assets owned by the legacy SPL Token
+> Program. Programmable NFTs, compressed NFTs, Token-2022 assets, and mainnet
+> value are unsupported.
 
 ## Current contract
 
 - A creator opens either a direct challenge or an open match.
-- Both players deposit the same amount of a legacy SPL token into a PDA vault.
+- Both players deposit the same disclosed platform-fee amount in a legacy SPL
+  token into a PDA vault. Pack purchases are external and never enter this vault.
 - An open match binds its opponent when the first non-creator deposits.
 - A creator can cancel only before an opponent has joined.
 - After the deadline, anyone can trigger a refund to either player's owned token
   account, so neither player depends on an operator.
-- The configured provider signer, fee recipient, fee rate, and valuation-policy
-  hash are committed to duel state for the future settlement instruction.
+- Each card is deposited into an isolated PDA-controlled legacy SPL token vault.
+- The configured provider signs one immutable result commitment binding the duel,
+  participants, both card mints, both integer values, and the precommitted
+  valuation-policy hash.
+- A globally unique provider request ID creates a replay receipt PDA.
+- Anyone may settle: the higher committed value receives both card assets and
+  both fee deposits go to the committed platform recipient. A tie returns each
+  original card and fee deposit without charging the platform fee.
+- Before a provider result is committed, expiry recovery is permissionless and
+  returns every payment/card deposit to its bound participant.
 
-The initial payment implementation intentionally targets the legacy SPL Token
-Program. Token-2022 transfer-fee mints are excluded until vault accounting can
-verify net received amounts.
+The devnet program address is
+`Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS`. The planned deployment authority
+is `Hk2BD9SiMsePPgbiX85BDuZRX9BbVsde7sdYR7RYgZVo`; its key material is not stored
+in this repository. Deployment remains pending a funded devnet authority and a
+successful CI/build artifact.
 
 ## Repository layout
 
@@ -38,9 +49,8 @@ docs/threat-model.md            Assets, adversaries, and mitigations
 
 ## Development
 
-The crate versions are pinned to Anchor `1.1.2`. The checked-in program ID is
-Anchor's development placeholder and **must** be replaced with a governed
-upgrade-authority key before any deployment.
+The crate versions are pinned to Anchor `1.1.2`. `Anchor.toml` defaults to
+devnet; pass an explicit local validator configuration when developing locally.
 
 ```bash
 anchor keys sync

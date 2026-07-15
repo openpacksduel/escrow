@@ -513,7 +513,7 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn close_payment_vault(mut ctx: Context<ClosePaymentVault>) -> Result<()> {
+    pub fn close_payment_vault(ctx: Context<ClosePaymentVault>) -> Result<()> {
         ctx.accounts.duel.require_payment_vault_closable()?;
         require_keys_eq!(
             ctx.accounts.excess_destination.owner,

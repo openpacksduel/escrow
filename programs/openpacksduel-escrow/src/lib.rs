@@ -206,11 +206,7 @@ fn transfer_from_vault<'info>(
         authority: duel.to_account_info(),
     };
     token::transfer_checked(
-        CpiContext::new_with_signer(
-            token_program.key(),
-            cpi_accounts,
-            &[&signer_seeds],
-        ),
+        CpiContext::new_with_signer(token_program.key(), cpi_accounts, &[&signer_seeds]),
         amount,
         payment_mint.decimals,
     )

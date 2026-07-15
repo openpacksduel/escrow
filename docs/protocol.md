@@ -117,12 +117,15 @@ refund route merely by regressing a duel status after a valid provider result.
 After the corresponding tracked deposits have left custody, any signer can
 close the token vault. Closure is not privileged, but asset and rent ownership
 are fixed. Any untracked payment balance first transfers to a token account
-owned by the precommitted fee recipient; the caller cannot redirect it.
-Payment-vault rent then returns to the creator that initialized the duel, and
-card-vault rent returns to the exact depositor that funded that vault's creation.
-The close instruction rejects active states, tracked deposits, substituted
-vaults, substituted mints, substituted excess destinations, and substituted rent
-recipients.
+owned by the precommitted fee recipient; the caller cannot redirect it. The
+payment vault is synchronized first, so raw SOL sent directly to its address is
+also treated as WSOL excess rather than being disguised as rent. Any card sent
+back after tracked custody clears is returned to a token account owned by the
+original player for that role. Payment-vault rent then returns to the creator
+that initialized the duel, and card-vault rent returns to the exact depositor
+that funded that vault's creation. The close instruction rejects active states,
+tracked deposits, substituted vaults, substituted mints, substituted recovery
+destinations, and substituted rent recipients.
 
 The duel and result accounts are intentionally persistent receipts. Closing and
 recreating either PDA would weaken nonce/request replay guarantees and erase the

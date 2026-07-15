@@ -34,10 +34,12 @@ matchmaking service, and pack-provider adapter live separately in
   original card and fee deposit without charging the platform fee.
 - Before a provider result is committed, expiry recovery is permissionless and
   returns every payment/card deposit to its bound participant.
-- Once tracked custody has left a vault, anyone can close it. Untracked payment
-  excess first sweeps to the precommitted fee recipient, then rent returns to the
-  creator for the payment vault and to the signer that paid to create each card
-  vault. Duel and result receipts deliberately remain open so a closed vault
+- Once tracked custody has left a vault, anyone can close it. The payment vault
+  first synchronizes raw SOL, then all untracked excess sweeps to the
+  precommitted fee recipient. Any NFT sent back to a terminal card vault returns
+  to its original role player. Rent returns to the creator for the payment vault
+  and to the signer that paid to create each card vault. Duel and result receipts
+  deliberately remain open so a closed vault
   cannot erase replay protection or settlement history.
 
 The devnet program address is

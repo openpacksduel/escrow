@@ -1,8 +1,10 @@
 #![allow(deprecated)]
 
 use anchor_lang::{
-    prelude::{AccountInfo, Pubkey, Rent},
-    solana_program::{entrypoint::ProgramResult, program_option::COption, system_program},
+    prelude::{AccountInfo, Clock, Pubkey, Rent},
+    solana_program::{
+        entrypoint::ProgramResult, program_option::COption, system_instruction, system_program,
+    },
     InstructionData, ToAccountMetas,
 };
 use openpacksduel_escrow::{
@@ -25,11 +27,11 @@ fn process_escrow_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let program_id = *program_id;
-    let accounts = accounts.to_vec();
-    let instruction_data = instruction_data.to_vec();
+    let program_id = Box::leak(Box::new(*program_id));
+    let accounts = Box::leak(accounts.to_vec().into_boxed_slice());
+    let instruction_data = Box::leak(instruction_data.to_vec().into_boxed_slice());
 
-    openpacksduel_escrow::entry(&program_id, &accounts, &instruction_data)
+    openpacksduel_escrow::entry(program_id, accounts, instruction_data)
 }
 
 struct Fixture {
@@ -43,6 +45,9 @@ struct Fixture {
     excess_destination: Pubkey,
     freezeable_card_mint: Pubkey,
     freezeable_card_source: Pubkey,
+    immutable_card_mint: Pubkey,
+    immutable_card_source: Pubkey,
+    immutable_card_destination: Pubkey,
 }
 
 fn program_test() -> (ProgramTest, Fixture) {
@@ -56,6 +61,9 @@ fn program_test() -> (ProgramTest, Fixture) {
     let excess_destination = Pubkey::new_unique();
     let freezeable_card_mint = Pubkey::new_unique();
     let freezeable_card_source = Pubkey::new_unique();
+    let immutable_card_mint = Pubkey::new_unique();
+    let immutable_card_source = Pubkey::new_unique();
+    let immutable_card_destination = Pubkey::new_unique();
     let rent = Rent::default();
 
     let mut test = ProgramTest::new(
@@ -134,6 +142,27 @@ fn program_test() -> (ProgramTest, Fixture) {
         freezeable_card_source,
         token_account(creator.pubkey(), freezeable_card_mint, 1, false, &rent),
     );
+    test.add_account(
+        immutable_card_mint,
+        mint_account(
+            LegacyMint {
+                mint_authority: COption::None,
+                supply: 1,
+                decimals: 0,
+                is_initialized: true,
+                freeze_authority: COption::None,
+            },
+            &rent,
+        ),
+    );
+    test.add_account(
+        immutable_card_source,
+        token_account(creator.pubkey(), immutable_card_mint, 1, false, &rent),
+    );
+    test.add_account(
+        immutable_card_destination,
+        token_account(creator.pubkey(), immutable_card_mint, 0, false, &rent),
+    );
 
     (
         test,
@@ -148,6 +177,9 @@ fn program_test() -> (ProgramTest, Fixture) {
             excess_destination,
             freezeable_card_mint,
             freezeable_card_source,
+            immutable_card_mint,
+            immutable_card_source,
+            immutable_card_destination,
         },
     )
 }
@@ -418,20 +450,11 @@ async fn terminal_payment_dust_sweeps_to_committed_fee_recipient_before_close() 
     .await
     .expect("creator fee deposit must succeed");
 
-    let dust_transfer = spl_token::instruction::transfer_checked(
-        &spl_token::id(),
-        &fixture.creator_payment_source,
-        &spl_token::native_mint::id(),
-        &payment_vault,
-        &fixture.creator.pubkey(),
-        &[],
-        DUST_AMOUNT,
-        spl_token::native_mint::DECIMALS,
-    )
-    .expect("dust transfer instruction must encode");
+    let dust_transfer =
+        system_instruction::transfer(&fixture.creator.pubkey(), &payment_vault, DUST_AMOUNT);
     send(&mut context, &[dust_transfer], &[&fixture.creator])
         .await
-        .expect("unsolicited dust transfer must succeed");
+        .expect("unsolicited raw SOL transfer must succeed");
 
     let cancel = anchor_lang::solana_program::instruction::Instruction {
         program_id: openpacksduel_escrow::id(),
@@ -479,6 +502,157 @@ async fn terminal_payment_dust_sweeps_to_committed_fee_recipient_before_close() 
     assert!(context
         .banks_client
         .get_account(payment_vault)
+        .await
+        .expect("vault query must succeed")
+        .is_none());
+}
+
+#[tokio::test]
+async fn redeposited_terminal_card_returns_to_recorded_player_before_close() {
+    let (test, fixture) = program_test();
+    let mut context = test.start_with_context().await;
+    let (duel, payment_vault) = duel_addresses(fixture.creator.pubkey());
+    let (card_vault, _) = Pubkey::find_program_address(
+        &[b"card-vault", duel.as_ref(), b"creator"],
+        &openpacksduel_escrow::id(),
+    );
+    let now = context.genesis_config().creation_time;
+
+    send(
+        &mut context,
+        &[initialize_duel_instruction(
+            &fixture,
+            duel,
+            payment_vault,
+            now,
+        )],
+        &[&fixture.creator],
+    )
+    .await
+    .expect("duel initialization must succeed");
+    send(
+        &mut context,
+        &[
+            fund_duel_instruction(
+                fixture.creator.pubkey(),
+                fixture.creator_payment_source,
+                duel,
+                payment_vault,
+            ),
+            fund_duel_instruction(
+                fixture.opponent.pubkey(),
+                fixture.opponent_payment_source,
+                duel,
+                payment_vault,
+            ),
+        ],
+        &[&fixture.creator, &fixture.opponent],
+    )
+    .await
+    .expect("both exact fee deposits must succeed");
+
+    let deposit = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::DepositCardAsset {
+            depositor: fixture.creator.pubkey(),
+            duel,
+            depositor_source: fixture.immutable_card_source,
+            card_vault,
+            card_mint: fixture.immutable_card_mint,
+            token_program: spl_token::id(),
+            system_program: system_program::ID,
+        }
+        .to_account_metas(None),
+        data: instruction::DepositCardAsset {
+            args: DepositCardAssetArgs {
+                role: PlayerRole::Creator,
+                asset_kind: AssetKind::LegacySplNft,
+            },
+        }
+        .data(),
+    };
+    send(&mut context, &[deposit], &[&fixture.creator])
+        .await
+        .expect("immutable creator card must enter custody");
+
+    let clock: Clock = context
+        .banks_client
+        .get_sysvar()
+        .await
+        .expect("clock query must succeed");
+    context
+        .warp_to_slot(clock.slot.saturating_add(200_000))
+        .expect("clock warp must succeed");
+    let expired_clock: Clock = context
+        .banks_client
+        .get_sysvar()
+        .await
+        .expect("expired clock query must succeed");
+    assert!(expired_clock.unix_timestamp >= now + 600);
+
+    let refund = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::RefundExpiredCard {
+            caller: context.payer.pubkey(),
+            duel,
+            card_vault,
+            card_mint: fixture.immutable_card_mint,
+            destination: fixture.immutable_card_destination,
+            token_program: spl_token::id(),
+        }
+        .to_account_metas(None),
+        data: instruction::RefundExpiredCard {
+            role: PlayerRole::Creator,
+        }
+        .data(),
+    };
+    send(&mut context, &[refund], &[])
+        .await
+        .expect("expired card refund must clear tracked custody");
+
+    let redeposit = spl_token::instruction::transfer_checked(
+        &spl_token::id(),
+        &fixture.immutable_card_destination,
+        &fixture.immutable_card_mint,
+        &card_vault,
+        &fixture.creator.pubkey(),
+        &[],
+        1,
+        0,
+    )
+    .expect("card redeposit instruction must encode");
+    send(&mut context, &[redeposit], &[&fixture.creator])
+        .await
+        .expect("unsolicited card redeposit must succeed");
+
+    let close = anchor_lang::solana_program::instruction::Instruction {
+        program_id: openpacksduel_escrow::id(),
+        accounts: accounts::CloseCardVault {
+            caller: context.payer.pubkey(),
+            duel,
+            card_vault,
+            card_mint: fixture.immutable_card_mint,
+            rent_recipient: fixture.creator.pubkey(),
+            recovery_destination: fixture.immutable_card_destination,
+            token_program: spl_token::id(),
+        }
+        .to_account_metas(None),
+        data: instruction::CloseCardVault {
+            role: PlayerRole::Creator,
+        }
+        .data(),
+    };
+    send(&mut context, &[close], &[])
+        .await
+        .expect("permissionless card recovery and close must succeed");
+
+    assert_eq!(
+        token_amount(&mut context, fixture.immutable_card_destination).await,
+        1
+    );
+    assert!(context
+        .banks_client
+        .get_account(card_vault)
         .await
         .expect("vault query must succeed")
         .is_none());

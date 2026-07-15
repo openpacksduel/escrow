@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, TransferChecked};
+use anchor_spl::token::{
+    self, CloseAccount, Mint, SyncNative, Token, TokenAccount, TransferChecked,
+};
 
 declare_id!("Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS");
 
@@ -513,7 +515,7 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn close_payment_vault(ctx: Context<ClosePaymentVault>) -> Result<()> {
+    pub fn close_payment_vault(mut ctx: Context<ClosePaymentVault>) -> Result<()> {
         ctx.accounts.duel.require_payment_vault_closable()?;
         require_keys_eq!(
             ctx.accounts.excess_destination.owner,
@@ -525,6 +527,9 @@ pub mod openpacksduel_escrow {
             ctx.accounts.payment_vault.key(),
             EscrowError::InvalidFeeDestination
         );
+
+        sync_native_vault(&ctx.accounts.payment_vault, &ctx.accounts.token_program)?;
+        ctx.accounts.payment_vault.reload()?;
 
         let excess_amount = ctx.accounts.payment_vault.amount;
         if excess_amount > 0 {
@@ -567,7 +572,7 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn close_card_vault(ctx: Context<CloseCardVault>, role: PlayerRole) -> Result<()> {
+    pub fn close_card_vault(mut ctx: Context<CloseCardVault>, role: PlayerRole) -> Result<()> {
         ctx.accounts.duel.require_card_vault_closable(role)?;
         require_keys_eq!(
             ctx.accounts.card_vault.key(),
@@ -584,6 +589,37 @@ pub mod openpacksduel_escrow {
             ctx.accounts.duel.card_rent_recipient(role),
             EscrowError::InvalidRentRecipient
         );
+        require_keys_eq!(
+            ctx.accounts.recovery_destination.owner,
+            ctx.accounts.duel.player_for_role(role),
+            EscrowError::InvalidDestinationOwner
+        );
+        require_keys_neq!(
+            ctx.accounts.recovery_destination.key(),
+            ctx.accounts.card_vault.key(),
+            EscrowError::InvalidDestinationOwner
+        );
+
+        let excess_amount = ctx.accounts.card_vault.amount;
+        if excess_amount > 0 {
+            transfer_from_duel_vault(
+                &ctx.accounts.duel,
+                &ctx.accounts.card_vault,
+                &ctx.accounts.card_mint,
+                &ctx.accounts.recovery_destination,
+                &ctx.accounts.token_program,
+                excess_amount,
+            )?;
+            ctx.accounts.card_vault.reload()?;
+
+            emit!(CardExcessSwept {
+                duel: ctx.accounts.duel.key(),
+                role,
+                card_mint: ctx.accounts.card_mint.key(),
+                destination: ctx.accounts.recovery_destination.key(),
+                amount: excess_amount,
+            });
+        }
         require!(
             ctx.accounts.card_vault.amount == 0,
             EscrowError::VaultNotEmpty
@@ -631,6 +667,18 @@ fn transfer_checked<'info>(
         amount,
         mint.decimals,
     )
+}
+
+fn sync_native_vault<'info>(
+    vault: &Account<'info, TokenAccount>,
+    token_program: &Program<'info, Token>,
+) -> Result<()> {
+    token::sync_native(CpiContext::new(
+        token_program.key(),
+        SyncNative {
+            account: vault.to_account_info(),
+        },
+    ))
 }
 
 fn transfer_from_duel_vault<'info>(
@@ -1189,6 +1237,8 @@ pub struct CloseCardVault<'info> {
     /// CHECK: The instruction verifies this key against the recorded vault payer.
     #[account(mut)]
     pub rent_recipient: UncheckedAccount<'info>,
+    #[account(mut, token::mint = card_mint)]
+    pub recovery_destination: Account<'info, TokenAccount>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -1592,6 +1642,15 @@ pub struct CustodyVaultClosed {
 pub struct PaymentExcessSwept {
     pub duel: Pubkey,
     pub payment_mint: Pubkey,
+    pub destination: Pubkey,
+    pub amount: u64,
+}
+
+#[event]
+pub struct CardExcessSwept {
+    pub duel: Pubkey,
+    pub role: PlayerRole,
+    pub card_mint: Pubkey,
     pub destination: Pubkey,
     pub amount: u64,
 }

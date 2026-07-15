@@ -63,16 +63,18 @@ describe("instruction fixtures", () => {
     expect(description.dataBase58Sha256).toHaveLength(64);
     expect(description.dataBytesSha256).toHaveLength(64);
     expect(instruction.data).toEqual(
-      bytes(
-        [197, 5, 158, 89, 174, 188, 134, 6],
-        littleEndian64(fixture.nonce),
-        [1],
-        fixture.opponent.toBytes(),
-        littleEndian64(fixture.feeAmount),
-        littleEndian64(fixture.expiresAt),
-        fixture.providerSigner.toBytes(),
-        fixture.feeRecipient.toBytes(),
-        fixture.valuationPolicyHash,
+      Buffer.from(
+        bytes(
+          [197, 5, 158, 89, 174, 188, 134, 6],
+          littleEndian64(fixture.nonce),
+          [1],
+          fixture.opponent.toBytes(),
+          littleEndian64(fixture.feeAmount),
+          littleEndian64(fixture.expiresAt),
+          fixture.providerSigner.toBytes(),
+          fixture.feeRecipient.toBytes(),
+          fixture.valuationPolicyHash,
+        ),
       ),
     );
   });
@@ -110,10 +112,10 @@ describe("instruction fixtures", () => {
       assetStandard: "legacy-spl-nft",
     });
     expect(creator.data).toEqual(
-      bytes([212, 169, 85, 35, 162, 91, 119, 42], [0, 0]),
+      Buffer.from(bytes([212, 169, 85, 35, 162, 91, 119, 42], [0, 0])),
     );
     expect(opponent.data).toEqual(
-      bytes([212, 169, 85, 35, 162, 91, 119, 42], [1, 0]),
+      Buffer.from(bytes([212, 169, 85, 35, 162, 91, 119, 42], [1, 0])),
     );
   });
 
@@ -155,19 +157,21 @@ describe("instruction fixtures", () => {
       "submit_result",
     );
     expect(instruction.data).toEqual(
-      bytes(
-        [240, 42, 89, 180, 10, 239, 9, 214],
-        fixture.caller.toBytes(),
-        fixture.providerRequestId,
-        fixture.creator.toBytes(),
-        fixture.opponent.toBytes(),
-        fixture.creatorCardMint.toBytes(),
-        fixture.opponentCardMint.toBytes(),
-        [0, 0],
-        fixture.valuationPolicyHash,
-        littleEndian64(2_000_000n),
-        littleEndian64(1_500_000n),
-        littleEndian64(fixture.openedAt),
+      Buffer.from(
+        bytes(
+          [240, 42, 89, 180, 10, 239, 9, 214],
+          fixture.caller.toBytes(),
+          fixture.providerRequestId,
+          fixture.creator.toBytes(),
+          fixture.opponent.toBytes(),
+          fixture.creatorCardMint.toBytes(),
+          fixture.opponentCardMint.toBytes(),
+          [0, 0],
+          fixture.valuationPolicyHash,
+          littleEndian64(2_000_000n),
+          littleEndian64(1_500_000n),
+          littleEndian64(fixture.openedAt),
+        ),
       ),
     );
   });
@@ -188,10 +192,12 @@ describe("instruction fixtures", () => {
       player: fixture.opponent,
     });
     expect(card.data).toEqual(
-      bytes([160, 130, 63, 132, 223, 30, 235, 144], [1]),
+      Buffer.from(bytes([160, 130, 63, 132, 223, 30, 235, 144], [1])),
     );
     expect(payment.data).toEqual(
-      bytes([82, 5, 192, 101, 25, 133, 163, 209], fixture.opponent.toBytes()),
+      Buffer.from(
+        bytes([82, 5, 192, 101, 25, 133, 163, 209], fixture.opponent.toBytes()),
+      ),
     );
   });
 

@@ -973,7 +973,7 @@ pub struct InitializeDuel<'info> {
         seeds = [DUEL_SEED, creator.key().as_ref(), args.nonce.to_le_bytes().as_ref()],
         bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         init,
         payer = creator,
@@ -999,7 +999,7 @@ pub struct FundDuel<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, token::mint = payment_mint, token::authority = player)]
     pub player_source: Account<'info, TokenAccount>,
     #[account(
@@ -1024,7 +1024,7 @@ pub struct DepositCardAsset<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, token::mint = card_mint, token::authority = depositor)]
     pub depositor_source: Account<'info, TokenAccount>,
     #[account(
@@ -1051,7 +1051,7 @@ pub struct SubmitResult<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         init,
         payer = provider_signer,
@@ -1073,9 +1073,9 @@ pub struct SettleDuel<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(mut, has_one = duel)]
-    pub result_commitment: Account<'info, ResultCommitment>,
+    pub result_commitment: Box<Account<'info, ResultCommitment>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -1083,14 +1083,14 @@ pub struct SettleDuel<'info> {
         token::mint = payment_mint,
         token::authority = duel,
     )]
-    pub payment_vault: Account<'info, TokenAccount>,
-    pub payment_mint: Account<'info, Mint>,
+    pub payment_vault: Box<Account<'info, TokenAccount>>,
+    pub payment_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = payment_mint)]
-    pub creator_payment_destination: Account<'info, TokenAccount>,
+    pub creator_payment_destination: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = payment_mint)]
-    pub opponent_payment_destination: Account<'info, TokenAccount>,
+    pub opponent_payment_destination: Box<Account<'info, TokenAccount>>,
     #[account(mut, token::mint = payment_mint)]
-    pub fee_destination: Account<'info, TokenAccount>,
+    pub fee_destination: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), CREATOR_CARD_SEED],
@@ -1098,10 +1098,10 @@ pub struct SettleDuel<'info> {
         token::mint = creator_card_mint,
         token::authority = duel,
     )]
-    pub creator_card_vault: Account<'info, TokenAccount>,
-    pub creator_card_mint: Account<'info, Mint>,
+    pub creator_card_vault: Box<Account<'info, TokenAccount>>,
+    pub creator_card_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = creator_card_mint)]
-    pub creator_card_destination: Account<'info, TokenAccount>,
+    pub creator_card_destination: Box<Account<'info, TokenAccount>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), OPPONENT_CARD_SEED],
@@ -1109,10 +1109,10 @@ pub struct SettleDuel<'info> {
         token::mint = opponent_card_mint,
         token::authority = duel,
     )]
-    pub opponent_card_vault: Account<'info, TokenAccount>,
-    pub opponent_card_mint: Account<'info, Mint>,
+    pub opponent_card_vault: Box<Account<'info, TokenAccount>>,
+    pub opponent_card_mint: Box<Account<'info, Mint>>,
     #[account(mut, token::mint = opponent_card_mint)]
-    pub opponent_card_destination: Account<'info, TokenAccount>,
+    pub opponent_card_destination: Box<Account<'info, TokenAccount>>,
     pub token_program: Program<'info, Token>,
 }
 
@@ -1128,7 +1128,7 @@ pub struct CancelUnmatched<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -1153,7 +1153,7 @@ pub struct RefundExpiredPayment<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -1177,7 +1177,7 @@ pub struct RefundExpiredCard<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), role.seed()],
@@ -1201,7 +1201,7 @@ pub struct ClosePaymentVault<'info> {
         has_one = payment_mint,
         has_one = payment_vault,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [PAYMENT_VAULT_SEED, duel.key().as_ref()],
@@ -1227,7 +1227,7 @@ pub struct CloseCardVault<'info> {
         seeds = [DUEL_SEED, duel.creator.as_ref(), duel.nonce.to_le_bytes().as_ref()],
         bump = duel.bump,
     )]
-    pub duel: Account<'info, Duel>,
+    pub duel: Box<Account<'info, Duel>>,
     #[account(
         mut,
         seeds = [CARD_VAULT_SEED, duel.key().as_ref(), role.seed()],

@@ -1,0 +1,364 @@
+name: Program release
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/program-release.yml
+      - Anchor.toml
+      - Cargo.lock
+      - Cargo.toml
+      - programs/**
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/program-release.yml
+      - Anchor.toml
+      - Cargo.lock
+      - Cargo.toml
+      - programs/**
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the artifact built from this workflow ref to devnet
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Enter devnet:Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS to authorize deployment
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: program-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROGRAM_NAME: openpacksduel_escrow
+  PROGRAM_ID: Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS
+  EXPECTED_DEPLOY_AUTHORITY: Hk2BD9SiMsePPgbiX85BDuZRX9BbVsde7sdYR7RYgZVo
+  DEVNET_RPC_URL: https://api.devnet.solana.com
+  DEVNET_GENESIS_HASH: EtWTRABZaYq6iMfeYKouRu166VU2xqa1
+  ANCHOR_VERSION: 1.1.2
+  ANCHOR_LINUX_SHA256: fdea9979629e9416e5f5e5622ff6c11b8c691d1e559581ece368e903c0c980c1
+  AGAVE_VERSION: 3.1.10
+  AGAVE_LINUX_SHA256: a7205ff29bcf0f7199740225ecae2b85a28ea9668892d5ec21bd9749882984a1
+  RUST_VERSION: 1.89.0
+
+jobs:
+  build:
+    name: Build deployable program
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+          rustc --version
+
+      - name: Install pinned Agave toolchain
+        run: |
+          archive="$RUNNER_TEMP/solana-release.tar.bz2"
+          install_dir="$RUNNER_TEMP/agave"
+          curl --fail --silent --show-error --location \
+            "https://github.com/anza-xyz/agave/releases/download/v${AGAVE_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            --output "$archive"
+          echo "${AGAVE_LINUX_SHA256}  ${archive}" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          tar -xjf "$archive" -C "$install_dir"
+          echo "$install_dir/solana-release/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned Anchor CLI
+        run: |
+          install_dir="$RUNNER_TEMP/anchor-bin"
+          binary="$install_dir/anchor"
+          mkdir -p "$install_dir"
+          curl --fail --silent --show-error --location \
+            "https://github.com/otter-sec/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu" \
+            --output "$binary"
+          echo "${ANCHOR_LINUX_SHA256}  ${binary}" | sha256sum --check --strict
+          chmod 0755 "$binary"
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        run: |
+          test "$(anchor --version)" = "anchor-cli ${ANCHOR_VERSION}"
+          test "$(solana --version | awk '{print $2}')" = "${AGAVE_VERSION}"
+          anchor --version
+          solana --version
+
+      - name: Build program and IDL
+        run: |
+          test "$(grep -Fc "declare_id!(\"${PROGRAM_ID}\");" programs/openpacksduel-escrow/src/lib.rs)" = 1
+          test "$(grep -Fc "openpacksduel_escrow = \"${PROGRAM_ID}\"" Anchor.toml)" = 2
+          anchor build
+
+      - name: Package checksummed artifact
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          so_path="target/deploy/${PROGRAM_NAME}.so"
+          idl_path="target/idl/${PROGRAM_NAME}.json"
+          test -s "$so_path"
+          test -s "$idl_path"
+          test -s Cargo.lock
+
+          mkdir -p release
+          cp "$so_path" "release/${PROGRAM_NAME}.so"
+          cp "$idl_path" "release/${PROGRAM_NAME}.json"
+          cp Cargo.lock release/source-Cargo.lock
+
+          artifact_sha=$(sha256sum "release/${PROGRAM_NAME}.so" | awk '{print $1}')
+          artifact_bytes=$(wc -c < "release/${PROGRAM_NAME}.so" | tr -d ' ')
+          idl_sha=$(sha256sum "release/${PROGRAM_NAME}.json" | awk '{print $1}')
+          lock_sha=$(sha256sum release/source-Cargo.lock | awk '{print $1}')
+
+          jq -n \
+            --arg programName "$PROGRAM_NAME" \
+            --arg programId "$PROGRAM_ID" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg artifactSha256 "$artifact_sha" \
+            --arg idlSha256 "$idl_sha" \
+            --arg lockSha256 "$lock_sha" \
+            --arg anchorVersion "$ANCHOR_VERSION" \
+            --arg agaveVersion "$AGAVE_VERSION" \
+            --arg rustVersion "$RUST_VERSION" \
+            --argjson artifactBytes "$artifact_bytes" \
+            '{
+              programName: $programName,
+              programId: $programId,
+              sourceSha: $sourceSha,
+              artifact: {
+                file: ($programName + ".so"),
+                bytes: $artifactBytes,
+                sha256: $artifactSha256
+              },
+              idl: {
+                file: ($programName + ".json"),
+                sha256: $idlSha256
+              },
+              sourceCargoLockSha256: $lockSha256,
+              toolchain: {
+                anchor: $anchorVersion,
+                agave: $agaveVersion,
+                rust: $rustVersion
+              }
+            }' > release/build-manifest.json
+
+          (
+            cd release
+            sha256sum \
+              "${PROGRAM_NAME}.so" \
+              "${PROGRAM_NAME}.json" \
+              source-Cargo.lock \
+              build-manifest.json > SHA256SUMS
+          )
+          (cd release && sha256sum --check --strict SHA256SUMS)
+
+      - name: Upload program artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: openpacksduel-escrow-${{ github.sha }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  deploy-devnet:
+    name: Deploy and verify devnet
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: devnet
+    steps:
+      - name: Confirm immutable deployment target
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          test "$CONFIRMATION" = "devnet:${PROGRAM_ID}"
+          response=$(curl --fail --silent --show-error --max-time 20 \
+            -H 'content-type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"getGenesisHash"}' \
+            "$DEVNET_RPC_URL")
+          test "$(jq -r '.result' <<< "$response")" = "$DEVNET_GENESIS_HASH"
+
+      - name: Install pinned Agave toolchain
+        run: |
+          archive="$RUNNER_TEMP/solana-release.tar.bz2"
+          install_dir="$RUNNER_TEMP/agave"
+          curl --fail --silent --show-error --location \
+            "https://github.com/anza-xyz/agave/releases/download/v${AGAVE_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            --output "$archive"
+          echo "${AGAVE_LINUX_SHA256}  ${archive}" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          tar -xjf "$archive" -C "$install_dir"
+          echo "$install_dir/solana-release/bin" >> "$GITHUB_PATH"
+
+      - name: Download program artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: openpacksduel-escrow-${{ github.sha }}
+          path: release
+
+      - name: Verify artifact checksums and identity
+        run: |
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          test "$(jq -r '.programId' release/build-manifest.json)" = "$PROGRAM_ID"
+          test "$(jq -r '.sourceSha' release/build-manifest.json)" = "${{ github.sha }}"
+
+      - name: Deploy program
+        id: deploy
+        env:
+          AUTHORITY_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_DEPLOY_AUTHORITY_KEYPAIR_JSON }}
+          PROGRAM_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_PROGRAM_KEYPAIR_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          authority_path="$RUNNER_TEMP/devnet-authority.json"
+          program_keypair_path="$RUNNER_TEMP/devnet-program-keypair.json"
+          cleanup() {
+            rm -f "$authority_path" "$program_keypair_path"
+          }
+          trap cleanup EXIT
+
+          test -n "$AUTHORITY_KEYPAIR_JSON"
+          printf '%s' "$AUTHORITY_KEYPAIR_JSON" > "$authority_path"
+          jq -e 'type == "array" and length == 64 and all(.[]; type == "number" and . >= 0 and . <= 255)' \
+            "$authority_path" > /dev/null
+          test "$(solana-keygen pubkey "$authority_path")" = "$EXPECTED_DEPLOY_AUTHORITY"
+
+          account_payload=$(jq -nc --arg program "$PROGRAM_ID" \
+            '{jsonrpc:"2.0",id:1,method:"getAccountInfo",params:[$program,{encoding:"base64",commitment:"confirmed"}]}')
+          account_response=$(curl --fail --silent --show-error --max-time 20 \
+            -H 'content-type: application/json' \
+            --data "$account_payload" \
+            "$DEVNET_RPC_URL")
+          jq -e '.error == null' <<< "$account_response" > /dev/null
+
+          if jq -e '.result.value != null' <<< "$account_response" > /dev/null; then
+            program_info=$(solana program show "$PROGRAM_ID" \
+              --url "$DEVNET_RPC_URL" \
+              --keypair "$authority_path" \
+              --output json-compact)
+            test "$(jq -r '.programId' <<< "$program_info")" = "$PROGRAM_ID"
+            test "$(jq -r '.authority' <<< "$program_info")" = "$EXPECTED_DEPLOY_AUTHORITY"
+            program_id_argument="$PROGRAM_ID"
+            deployment_kind=upgrade
+          else
+            test -n "$PROGRAM_KEYPAIR_JSON"
+            printf '%s' "$PROGRAM_KEYPAIR_JSON" > "$program_keypair_path"
+            jq -e 'type == "array" and length == 64 and all(.[]; type == "number" and . >= 0 and . <= 255)' \
+              "$program_keypair_path" > /dev/null
+            test "$(solana-keygen pubkey "$program_keypair_path")" = "$PROGRAM_ID"
+            program_id_argument="$program_keypair_path"
+            deployment_kind=initial
+          fi
+
+          artifact="release/${PROGRAM_NAME}.so"
+          artifact_bytes=$(wc -c < "$artifact" | tr -d ' ')
+          rent_lamports=$(solana rent "$artifact_bytes" \
+            --url "$DEVNET_RPC_URL" \
+            --keypair "$authority_path" \
+            --lamports \
+            --output json-compact | jq -r '.rentExemptMinimumLamports')
+          recommended_lamports=$((rent_lamports * 2 + 10000000))
+          balance_lamports=$(solana balance "$EXPECTED_DEPLOY_AUTHORITY" \
+            --url "$DEVNET_RPC_URL" \
+            --keypair "$authority_path" \
+            --lamports \
+            --output json-compact | jq -r '.lamports')
+          if (( balance_lamports < recommended_lamports )); then
+            echo "Authority balance ${balance_lamports} lamports is below the deployment safety floor ${recommended_lamports} lamports." >&2
+            echo "The floor covers two program-sized rent allocations plus 0.01 SOL for deployment fees." >&2
+            exit 1
+          fi
+
+          solana program deploy "$artifact" \
+            --url "$DEVNET_RPC_URL" \
+            --keypair "$authority_path" \
+            --fee-payer "$authority_path" \
+            --upgrade-authority "$authority_path" \
+            --program-id "$program_id_argument" \
+            --commitment finalized \
+            --max-sign-attempts 10 \
+            --use-rpc \
+            --output json > "$RUNNER_TEMP/deployment.json"
+
+          echo "deployment_kind=$deployment_kind" >> "$GITHUB_OUTPUT"
+          echo "recommended_lamports=$recommended_lamports" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed program and bytecode
+        env:
+          AUTHORITY_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_DEPLOY_AUTHORITY_KEYPAIR_JSON }}
+          DEPLOYMENT_KIND: ${{ steps.deploy.outputs.deployment_kind }}
+          RECOMMENDED_LAMPORTS: ${{ steps.deploy.outputs.recommended_lamports }}
+        run: |
+          set -euo pipefail
+          umask 077
+          authority_path="$RUNNER_TEMP/devnet-authority.json"
+          onchain_program="$RUNNER_TEMP/onchain-${PROGRAM_NAME}.so"
+          cleanup() {
+            rm -f "$authority_path" "$onchain_program"
+          }
+          trap cleanup EXIT
+          printf '%s' "$AUTHORITY_KEYPAIR_JSON" > "$authority_path"
+
+          mkdir -p verification
+          solana program show "$PROGRAM_ID" \
+            --url "$DEVNET_RPC_URL" \
+            --keypair "$authority_path" \
+            --output json-compact > verification/program-info.json
+          test "$(jq -r '.programId' verification/program-info.json)" = "$PROGRAM_ID"
+          test "$(jq -r '.owner' verification/program-info.json)" = "BPFLoaderUpgradeab1e11111111111111111111111"
+          test "$(jq -r '.authority' verification/program-info.json)" = "$EXPECTED_DEPLOY_AUTHORITY"
+
+          solana program dump "$PROGRAM_ID" "$onchain_program" \
+            --url "$DEVNET_RPC_URL" \
+            --keypair "$authority_path"
+          artifact_sha=$(sha256sum "release/${PROGRAM_NAME}.so" | awk '{print $1}')
+          onchain_sha=$(sha256sum "$onchain_program" | awk '{print $1}')
+          test "$onchain_sha" = "$artifact_sha"
+
+          jq -n \
+            --arg cluster devnet \
+            --arg genesisHash "$DEVNET_GENESIS_HASH" \
+            --arg programId "$PROGRAM_ID" \
+            --arg authority "$EXPECTED_DEPLOY_AUTHORITY" \
+            --arg artifactSha256 "$artifact_sha" \
+            --arg deploymentKind "$DEPLOYMENT_KIND" \
+            --arg sourceSha "${{ github.sha }}" \
+            '{
+              cluster: $cluster,
+              genesisHash: $genesisHash,
+              programId: $programId,
+              upgradeAuthority: $authority,
+              artifactSha256: $artifactSha256,
+              deploymentKind: $deploymentKind,
+              sourceSha: $sourceSha
+            }' > verification/deployment-verification.json
+
+          {
+            echo "## Devnet deployment verified"
+            echo
+            echo "- Program: \`$PROGRAM_ID\`"
+            echo "- Upgrade authority: \`$EXPECTED_DEPLOY_AUTHORITY\`"
+            echo "- Artifact SHA-256: \`$artifact_sha\`"
+            echo "- Deployment kind: \`$DEPLOYMENT_KIND\`"
+            echo "- Deployment safety floor: \`$RECOMMENDED_LAMPORTS lamports\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload deployment receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: openpacksduel-escrow-devnet-verification-${{ github.sha }}
+          path: verification/
+          if-no-files-found: error
+          retention-days: 90

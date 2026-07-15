@@ -35,8 +35,9 @@ matchmaking service, and pack-provider adapter live separately in
 The devnet program address is
 `Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS`. The planned deployment authority
 is `Hk2BD9SiMsePPgbiX85BDuZRX9BbVsde7sdYR7RYgZVo`; its key material is not stored
-in this repository. Deployment remains pending a funded devnet authority and a
-successful CI/build artifact.
+in this repository. The checksummed build and guarded manual deployment path are
+documented in [the devnet release runbook](docs/devnet-deployment.md). Deployment
+remains pending a funded devnet authority.
 
 ## Repository layout
 
@@ -45,6 +46,7 @@ programs/openpacksduel-escrow/  Anchor program
 docs/protocol.md                State machine and trust boundaries
 docs/threat-model.md            Assets, adversaries, and mitigations
 .github/workflows/ci.yml        Formatting, lint, and host tests
+.github/workflows/program-release.yml  Checksummed program build and devnet deploy
 ```
 
 ## Development
@@ -66,6 +68,7 @@ controls listed in [SECURITY.md](SECURITY.md) and the open hardening work in
 
 - [Protocol and state machine](docs/protocol.md)
 - [Threat model](docs/threat-model.md)
+- [Devnet program release](docs/devnet-deployment.md)
 - [Security policy](SECURITY.md)
 
 ## License

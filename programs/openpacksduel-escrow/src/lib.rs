@@ -168,18 +168,25 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn submit_result(
-        ctx: Context<SubmitResult>,
-        args: SubmitResultArgs,
-    ) -> Result<()> {
+    pub fn submit_result(ctx: Context<SubmitResult>, args: SubmitResultArgs) -> Result<()> {
         let clock = Clock::get()?;
         let duel_key = ctx.accounts.duel.key();
         let duel = &ctx.accounts.duel;
 
-        require!(duel.status == DuelStatus::AwaitingResult, EscrowError::InvalidStatus);
-        require!(clock.unix_timestamp < duel.expires_at, EscrowError::DuelExpired);
+        require!(
+            duel.status == DuelStatus::AwaitingResult,
+            EscrowError::InvalidStatus
+        );
+        require!(
+            clock.unix_timestamp < duel.expires_at,
+            EscrowError::DuelExpired
+        );
         require!(args.duel == duel_key, EscrowError::ResultDuelMismatch);
-        require_keys_eq!(args.creator, duel.creator, EscrowError::ResultPlayerMismatch);
+        require_keys_eq!(
+            args.creator,
+            duel.creator,
+            EscrowError::ResultPlayerMismatch
+        );
         require_keys_eq!(
             args.opponent,
             duel.opponent,
@@ -265,7 +272,10 @@ pub mod openpacksduel_escrow {
     pub fn settle_duel(ctx: Context<SettleDuel>) -> Result<()> {
         let duel = &ctx.accounts.duel;
         let result = &ctx.accounts.result_commitment;
-        require!(duel.status == DuelStatus::ReadyToSettle, EscrowError::InvalidStatus);
+        require!(
+            duel.status == DuelStatus::ReadyToSettle,
+            EscrowError::InvalidStatus
+        );
         require!(!result.settled, EscrowError::ResultAlreadySettled);
         validate_settlement_accounts(&ctx)?;
 
@@ -452,10 +462,7 @@ pub mod openpacksduel_escrow {
         Ok(())
     }
 
-    pub fn refund_expired_card(
-        ctx: Context<RefundExpiredCard>,
-        role: PlayerRole,
-    ) -> Result<()> {
+    pub fn refund_expired_card(ctx: Context<RefundExpiredCard>, role: PlayerRole) -> Result<()> {
         require_refundable(&ctx.accounts.duel)?;
         require!(
             ctx.accounts.duel.card_deposited(role),
@@ -623,7 +630,10 @@ fn determine_outcome(creator_value: u64, opponent_value: u64) -> DuelOutcome {
 }
 
 fn require_before_expiry(duel: &Account<Duel>) -> Result<()> {
-    require!(Clock::get()?.unix_timestamp < duel.expires_at, EscrowError::DuelExpired);
+    require!(
+        Clock::get()?.unix_timestamp < duel.expires_at,
+        EscrowError::DuelExpired
+    );
     Ok(())
 }
 
@@ -681,9 +691,21 @@ fn validate_settlement_accounts(ctx: &Context<SettleDuel>) -> Result<()> {
     let duel = &ctx.accounts.duel;
     let result = &ctx.accounts.result_commitment;
     require_keys_eq!(result.duel, duel.key(), EscrowError::ResultDuelMismatch);
-    require_keys_eq!(duel.result_commitment, result.key(), EscrowError::ResultDuelMismatch);
-    require_keys_eq!(result.creator, duel.creator, EscrowError::ResultPlayerMismatch);
-    require_keys_eq!(result.opponent, duel.opponent, EscrowError::ResultPlayerMismatch);
+    require_keys_eq!(
+        duel.result_commitment,
+        result.key(),
+        EscrowError::ResultDuelMismatch
+    );
+    require_keys_eq!(
+        result.creator,
+        duel.creator,
+        EscrowError::ResultPlayerMismatch
+    );
+    require_keys_eq!(
+        result.opponent,
+        duel.opponent,
+        EscrowError::ResultPlayerMismatch
+    );
     require_keys_eq!(
         result.creator_card_mint,
         duel.creator_card_mint,
@@ -1042,7 +1064,10 @@ pub struct Duel {
 
 impl Duel {
     fn depositor_role(&self, player: Pubkey) -> Result<PlayerRole> {
-        require!(self.status == DuelStatus::Waiting, EscrowError::InvalidStatus);
+        require!(
+            self.status == DuelStatus::Waiting,
+            EscrowError::InvalidStatus
+        );
 
         if player == self.creator {
             require!(!self.creator_deposited, EscrowError::AlreadyDeposited);
@@ -1405,9 +1430,7 @@ mod tests {
     fn open_match_accepts_creator_and_first_opponent() {
         let duel = waiting_duel();
         assert!(duel.depositor_role(duel.creator).is_ok());
-        assert!(duel
-            .depositor_role(Pubkey::new_from_array([6; 32]))
-            .is_ok());
+        assert!(duel.depositor_role(Pubkey::new_from_array([6; 32])).is_ok());
     }
 
     #[test]

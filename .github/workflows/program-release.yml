@@ -41,7 +41,7 @@ env:
   PROGRAM_ID: Co198eFfQcmn1WzZRnHV6jxcSLBDCv1qNfPfiBYdCLfS
   EXPECTED_DEPLOY_AUTHORITY: Hk2BD9SiMsePPgbiX85BDuZRX9BbVsde7sdYR7RYgZVo
   DEVNET_RPC_URL: https://api.devnet.solana.com
-  DEVNET_GENESIS_HASH: EtWTRABZaYq6iMfeYKouRu166VU2xqa1
+  DEVNET_GENESIS_HASH: EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG
   ANCHOR_VERSION: 1.1.2
   ANCHOR_LINUX_SHA256: fdea9979629e9416e5f5e5622ff6c11b8c691d1e559581ece368e903c0c980c1
   AGAVE_VERSION: 3.1.10
@@ -88,6 +88,7 @@ jobs:
 
       - name: Verify toolchain
         run: |
+          test "$DEVNET_GENESIS_HASH" = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"
           test "$(anchor --version)" = "anchor-cli ${ANCHOR_VERSION}"
           test "$(solana --version | awk '{print $2}')" = "${AGAVE_VERSION}"
           anchor --version

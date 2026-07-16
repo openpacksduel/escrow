@@ -224,14 +224,24 @@ jobs:
         id: deploy
         env:
           AUTHORITY_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_DEPLOY_AUTHORITY_KEYPAIR_JSON }}
+          BUFFER_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_BUFFER_KEYPAIR_JSON }}
           PROGRAM_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_PROGRAM_KEYPAIR_JSON }}
         run: |
           set -euo pipefail
+          set +x
           umask 077
           authority_path="$RUNNER_TEMP/devnet-authority.json"
+          buffer_keypair_path="$RUNNER_TEMP/devnet-buffer-keypair.json"
+          deployment_error_path="$RUNNER_TEMP/deployment.stderr"
+          deployment_output_path="$RUNNER_TEMP/deployment.json"
           program_keypair_path="$RUNNER_TEMP/devnet-program-keypair.json"
           cleanup() {
-            rm -f "$authority_path" "$program_keypair_path"
+            rm -f \
+              "$authority_path" \
+              "$buffer_keypair_path" \
+              "$deployment_error_path" \
+              "$deployment_output_path" \
+              "$program_keypair_path"
           }
           trap cleanup EXIT
 
@@ -240,6 +250,14 @@ jobs:
           jq -e 'type == "array" and length == 64 and all(.[]; type == "number" and . >= 0 and . <= 255)' \
             "$authority_path" > /dev/null
           test "$(solana-keygen pubkey "$authority_path")" = "$EXPECTED_DEPLOY_AUTHORITY"
+
+          test -n "$BUFFER_KEYPAIR_JSON"
+          printf '%s' "$BUFFER_KEYPAIR_JSON" > "$buffer_keypair_path"
+          jq -e 'type == "array" and length == 64 and all(.[]; type == "number" and . >= 0 and . <= 255)' \
+            "$buffer_keypair_path" > /dev/null
+          buffer_pubkey=$(solana-keygen pubkey "$buffer_keypair_path")
+          test "$buffer_pubkey" != "$EXPECTED_DEPLOY_AUTHORITY"
+          test "$buffer_pubkey" != "$PROGRAM_ID"
 
           account_payload=$(jq -nc --arg program "$PROGRAM_ID" \
             '{jsonrpc:"2.0",id:1,method:"getAccountInfo",params:[$program,{encoding:"base64",commitment:"confirmed"}]}')
@@ -267,15 +285,42 @@ jobs:
             program_id_argument="$program_keypair_path"
             deployment_kind=initial
           fi
+          unset AUTHORITY_KEYPAIR_JSON BUFFER_KEYPAIR_JSON PROGRAM_KEYPAIR_JSON
 
           artifact="release/${PROGRAM_NAME}.so"
           artifact_bytes=$(wc -c < "$artifact" | tr -d ' ')
+          buffer_payload=$(jq -nc --arg buffer "$buffer_pubkey" \
+            '{jsonrpc:"2.0",id:1,method:"getAccountInfo",params:[$buffer,{encoding:"base64",commitment:"confirmed"}]}')
+          buffer_response=$(curl --fail --silent --show-error --max-time 20 \
+            -H 'content-type: application/json' \
+            --data "$buffer_payload" \
+            "$DEVNET_RPC_URL")
+          jq -e '.error == null' <<< "$buffer_response" > /dev/null
+          if jq -e '.result.value != null' <<< "$buffer_response" > /dev/null; then
+            test "$(jq -r '.result.value.owner' <<< "$buffer_response")" = \
+              "BPFLoaderUpgradeab1e11111111111111111111111"
+            buffer_lamports=$(jq -r '.result.value.lamports' <<< "$buffer_response")
+            buffer_reused=true
+          else
+            buffer_lamports=0
+            buffer_reused=false
+          fi
+
           rent_lamports=$(solana rent "$artifact_bytes" \
             --url "$DEVNET_RPC_URL" \
             --keypair "$authority_path" \
             --lamports \
             --output json-compact | jq -r '.rentExemptMinimumLamports')
-          recommended_lamports=$((rent_lamports * 2 + 10000000))
+          buffer_funding_lamports=$((rent_lamports - buffer_lamports))
+          if (( buffer_funding_lamports < 0 )); then
+            buffer_funding_lamports=0
+          fi
+          if [[ "$deployment_kind" = initial ]]; then
+            programdata_funding_lamports=$rent_lamports
+          else
+            programdata_funding_lamports=0
+          fi
+          recommended_lamports=$((buffer_funding_lamports + programdata_funding_lamports + 10000000))
           balance_lamports=$(solana balance "$EXPECTED_DEPLOY_AUTHORITY" \
             --url "$DEVNET_RPC_URL" \
             --keypair "$authority_path" \
@@ -283,27 +328,41 @@ jobs:
             --output json-compact | jq -r '.lamports')
           if (( balance_lamports < recommended_lamports )); then
             echo "Authority balance ${balance_lamports} lamports is below the deployment safety floor ${recommended_lamports} lamports." >&2
-            echo "The floor covers two program-sized rent allocations plus 0.01 SOL for deployment fees." >&2
+            echo "The floor covers missing buffer rent, initial ProgramData rent when required, and 0.01 SOL for deployment fees." >&2
             exit 1
           fi
 
-          solana program deploy "$artifact" \
-            --url "$DEVNET_RPC_URL" \
-            --keypair "$authority_path" \
-            --fee-payer "$authority_path" \
-            --upgrade-authority "$authority_path" \
-            --program-id "$program_id_argument" \
-            --commitment finalized \
-            --max-sign-attempts 10 \
-            --use-rpc \
-            --output json > "$RUNNER_TEMP/deployment.json"
+          if ! solana program deploy "$artifact" \
+              --url "$DEVNET_RPC_URL" \
+              --keypair "$authority_path" \
+              --fee-payer "$authority_path" \
+              --upgrade-authority "$authority_path" \
+              --program-id "$program_id_argument" \
+              --buffer "$buffer_keypair_path" \
+              --commitment finalized \
+              --max-sign-attempts 10 \
+              --use-rpc \
+              --output json \
+              > "$deployment_output_path" \
+              2> "$deployment_error_path"; then
+            echo "::error::Devnet deployment failed. Raw Solana CLI output was suppressed because it can contain key-recovery material." >&2
+            echo "Retry this workflow with the same ref and configured buffer keypair to resume the write." >&2
+            exit 1
+          fi
+          jq -e 'type == "object"' "$deployment_output_path" > /dev/null
 
-          echo "deployment_kind=$deployment_kind" >> "$GITHUB_OUTPUT"
-          echo "recommended_lamports=$recommended_lamports" >> "$GITHUB_OUTPUT"
+          {
+            echo "deployment_kind=$deployment_kind"
+            echo "buffer_pubkey=$buffer_pubkey"
+            echo "buffer_reused=$buffer_reused"
+            echo "recommended_lamports=$recommended_lamports"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Verify deployed program and bytecode
         env:
           AUTHORITY_KEYPAIR_JSON: ${{ secrets.SOLANA_DEVNET_DEPLOY_AUTHORITY_KEYPAIR_JSON }}
+          BUFFER_PUBKEY: ${{ steps.deploy.outputs.buffer_pubkey }}
+          BUFFER_REUSED: ${{ steps.deploy.outputs.buffer_reused }}
           DEPLOYMENT_KIND: ${{ steps.deploy.outputs.deployment_kind }}
           RECOMMENDED_LAMPORTS: ${{ steps.deploy.outputs.recommended_lamports }}
         run: |
@@ -339,6 +398,8 @@ jobs:
             --arg programId "$PROGRAM_ID" \
             --arg authority "$EXPECTED_DEPLOY_AUTHORITY" \
             --arg artifactSha256 "$artifact_sha" \
+            --arg bufferPublicKey "$BUFFER_PUBKEY" \
+            --arg bufferReused "$BUFFER_REUSED" \
             --arg deploymentKind "$DEPLOYMENT_KIND" \
             --arg sourceSha "${{ github.sha }}" \
             '{
@@ -347,6 +408,8 @@ jobs:
               programId: $programId,
               upgradeAuthority: $authority,
               artifactSha256: $artifactSha256,
+              bufferPublicKey: $bufferPublicKey,
+              resumedExistingBuffer: ($bufferReused == "true"),
               deploymentKind: $deploymentKind,
               sourceSha: $sourceSha
             }' > verification/deployment-verification.json
@@ -356,8 +419,10 @@ jobs:
             echo
             echo "- Program: \`$PROGRAM_ID\`"
             echo "- Upgrade authority: \`$EXPECTED_DEPLOY_AUTHORITY\`"
+            echo "- Deployment buffer: \`$BUFFER_PUBKEY\`"
             echo "- Artifact SHA-256: \`$artifact_sha\`"
             echo "- Deployment kind: \`$DEPLOYMENT_KIND\`"
+            echo "- Resumed existing buffer: \`$BUFFER_REUSED\`"
             echo "- Deployment safety floor: \`$RECOMMENDED_LAMPORTS lamports\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
